@@ -73,6 +73,12 @@ class NewsAggregator:
         Returns:
             Number of articles successfully stored.
         """
+        from datetime import date
+        from zoneinfo import ZoneInfo
+
+        IST = ZoneInfo("Asia/Kolkata")
+        today = datetime.now(IST).date()
+
         stored_count = 0
         for article in articles:
             # Check for duplicate by title + user to avoid re-inserting
@@ -93,6 +99,7 @@ class NewsAggregator:
                 source_url=article.source_url,
                 published_at=article.published_at,
                 raw_content=article.raw_content,
+                collection_date=today,
                 is_analyzed=False,
             )
             db.add(news_record)
