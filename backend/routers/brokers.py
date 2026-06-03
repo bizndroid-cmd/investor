@@ -205,3 +205,121 @@ async def disconnect_broker(
             detail=f"Failed to disconnect from {_BROKER_NAMES.get(broker_id, broker_id)}: {str(e)}",
         )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# Manual token input (for Groww daily access tokens)
+# ---------------------------------------------------------------------------
+
+
+class TokenInputRequest(BaseModel):
+    """Manual access token submission."""
+    access_token: str
+
+
+class TokenInfoResponse(BaseModel):
+    """Token connection info."""
+    broker_id: str
+    status: str
+    connected_at: str | None = None
+    expires_at: str | None = None
+    token_preview: str | None = None
+
+
+@router.post("/{broker_id}/token", response_model=TokenInfoResponse)
+async def submit_token(
+    broker_id: str,
+    request: TokenInputRequest,
+    session: Session = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TokenInfoResponse:
+    """Submit an access token manually (e.g., Groww daily token).
+
+    Stores the token for the user and returns connection info.
+    """
+    from datetime import datetime, timezone
+    from backend.utils.broker_token_store import store_broker_tokens
+
+    if broker_id not in _CONNECTORS:
+        raise HTTPException(status_code=404, detail=f"Broker '{broker_id}' not supported")
+
+    if not request.access_token or len(request.access_token) < 10:
+        raise HTTPException(status_code=400, detail="Invalid access token")
+
+    # Try to decode JWT expiry from the token (Groww tokens are JWTs)
+    expires_at = None
+    try:
+        import json, base64
+        parts = request.access_token.split(".")
+        if len(parts) == 3:
+            # Decode payload (add padding)
+            payload = parts[1] + "=" * (4 - len(parts[1]) % 4)
+            decoded = json.loads(base64.urlsafe_b64decode(payload))
+            exp = decoded.get("exp")
+            if exp:
+                expires_at = datetime.fromtimestamp(exp, tz=timezone.utc)
+    except Exception:
+        pass  # Not a JWT or invalid — store anyway
+
+    # Store the token
+    await store_broker_tokens(
+        db=db,
+        user_id=session.user_id,
+        broker_id=broker_id,
+        access_token=request.access_token,
+        refresh_token=None,
+        expires_at=expires_at,
+    )
+
+    now = datetime.now(timezone.utc)
+    token_preview = request.access_token[:20] + "..." + request.access_token[-10:]
+
+    return TokenInfoResponse(
+        broker_id=broker_id,
+        status="connected",
+        connected_at=now.isoformat(),
+        expires_at=expires_at.isoformat() if expires_at else None,
+        token_preview=token_preview,
+    )
+
+
+@router.get("/{broker_id}/token-info", response_model=TokenInfoResponse)
+async def get_token_info(
+    broker_id: str,
+    session: Session = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TokenInfoResponse:
+    """Get stored token info for a broker (without exposing the full token)."""
+    from datetime import datetime, timezone
+    from backend.utils.broker_token_store import get_broker_tokens
+    from backend.models.orm import BrokerToken
+    from sqlalchemy import select
+
+    if broker_id not in _CONNECTORS:
+        raise HTTPException(status_code=404, detail=f"Broker '{broker_id}' not supported")
+
+    # Get token record
+    stmt = select(BrokerToken).where(
+        BrokerToken.user_id == session.user_id,
+        BrokerToken.broker_id == broker_id,
+    )
+    result = await db.execute(stmt)
+    record = result.scalar_one_or_none()
+
+    if not record:
+        return TokenInfoResponse(
+            broker_id=broker_id,
+            status="disconnected",
+        )
+
+    # Check expiry
+    now = datetime.now(timezone.utc)
+    is_expired = record.expires_at and record.expires_at < now
+
+    return TokenInfoResponse(
+        broker_id=broker_id,
+        status="expired" if is_expired else "connected",
+        connected_at=record.connected_at.isoformat() if record.connected_at else None,
+        expires_at=record.expires_at.isoformat() if record.expires_at else None,
+        token_preview=None,  # Don't expose token details in GET
+    )
