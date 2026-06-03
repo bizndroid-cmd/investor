@@ -3,6 +3,10 @@
 # Automatic HTTPS via Let's Encrypt, WebSocket proxying
 # =============================================================================
 
+{
+    auto_https off
+}
+
 :80 {
     # API and WebSocket traffic → backend
     handle /api/* {
