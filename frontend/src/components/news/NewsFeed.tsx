@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { RefreshCw, Loader2, Sparkles, CheckCircle2, Database, Wifi, AlertTriangle } from "lucide-react";
+import { Loader2, Sparkles, CheckCircle2, Database, Wifi, AlertTriangle } from "lucide-react";
 import { useNews, useRefreshNews, useLLMStatus } from "@/hooks/useNews";
 import { NewsItem } from "./NewsItem";
 import { NewsFilters, type NewsFilterState } from "./NewsFilters";

@@ -7,7 +7,6 @@ import { DiversificationScore } from "@/components/portfolio/DiversificationScor
 import { AllocationChart } from "@/components/charts/AllocationChart";
 import { PortfolioTrendChart } from "@/components/charts/PortfolioTrendChart";
 import { GainLossChart } from "@/components/charts/GainLossChart";
-import { TimeRangeSelector } from "@/components/common/TimeRangeSelector";
 import { usePortfolio, useRefreshPortfolio } from "@/hooks/usePortfolio";
 import { usePriceSocket } from "@/hooks/usePriceSocket";
 

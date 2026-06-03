@@ -61,11 +61,9 @@ export function PortfolioBriefing() {
     refetch();
   };
 
-  // Determine if we should warn the user before generating
   const isLLMAvailable = llmStatus?.status === "operational";
   const isRateLimited = llmStatus?.status === "rate_limited";
   const isLLMDisabled = llmStatus?.status === "disabled";
-  const isLLMError = llmStatus?.status === "error";
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
@@ -182,7 +180,6 @@ export function PortfolioBriefing() {
 function LLMStatusBanner({
   status,
   message,
-  retryAfter,
   cooldownSeconds,
   limitsInfo,
 }: {

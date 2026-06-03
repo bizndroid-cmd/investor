@@ -1,0 +1,59 @@
+# =============================================================================
+# Caddy Reverse Proxy Configuration
+# Automatic HTTPS via Let's Encrypt, WebSocket proxying
+# =============================================================================
+
+{$DOMAIN:localhost} {
+    # API and WebSocket traffic → backend
+    handle /api/* {
+        uri strip_prefix /api
+        reverse_proxy backend:8000
+    }
+
+    handle /ws* {
+        reverse_proxy backend:8000
+    }
+
+    handle /health {
+        reverse_proxy backend:8000
+    }
+
+    handle /telemetry/* {
+        reverse_proxy backend:8000
+    }
+
+    handle /auth/* {
+        reverse_proxy backend:8000
+    }
+
+    handle /portfolio/* {
+        reverse_proxy backend:8000
+    }
+
+    handle /orders/* {
+        reverse_proxy backend:8000
+    }
+
+    handle /alerts/* {
+        reverse_proxy backend:8000
+    }
+
+    handle /news/* {
+        reverse_proxy backend:8000
+    }
+
+    handle /brokers/* {
+        reverse_proxy backend:8000
+    }
+
+    handle /market/* {
+        reverse_proxy backend:8000
+    }
+
+    # Frontend static files (SPA fallback)
+    handle {
+        root * /srv/frontend
+        try_files {path} /index.html
+        file_server
+    }
+}

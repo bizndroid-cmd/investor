@@ -58,3 +58,4 @@ logs/
 
 # Docker
 .docker/
+# Production secrets (keep .env.production as template, actual .env is already ignored)

@@ -1,0 +1,12 @@
+.venv/
+venv/
+.git/
+.kiro/
+node_modules/
+frontend/node_modules/
+frontend/dist/
+__pycache__/
+*.pyc
+.env
+.env.local
+.DS_Store
