@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getBrokers, connectBroker, disconnectBroker, submitBrokerToken, getBrokerTokenInfo } from "@/api/brokers";
-import type { TokenInfo } from "@/api/brokers";
+import { getBrokers, disconnectBroker, submitBrokerToken, getBrokerTokenInfo } from "@/api/brokers";
 import { BrokerStatusBadge } from "@/components/portfolio/BrokerStatusBadge";
 import { showToast } from "@/components/common/Toast";
 import type { BrokerId } from "@/api/types";
-import { Link2, Unlink, Key, Clock, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Unlink, Key, Clock, CheckCircle2, AlertTriangle } from "lucide-react";
 
 const BROKER_LABELS: Record<BrokerId, string> = {
   groww: "Groww",
