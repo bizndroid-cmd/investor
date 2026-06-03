@@ -3,7 +3,7 @@
 # Automatic HTTPS via Let's Encrypt, WebSocket proxying
 # =============================================================================
 
-{$DOMAIN:localhost} {
+:80 {
     # API and WebSocket traffic → backend
     handle /api/* {
         uri strip_prefix /api
