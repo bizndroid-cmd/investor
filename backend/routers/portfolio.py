@@ -137,11 +137,23 @@ async def get_portfolio(
     result = await db.execute(stmt)
     existing_summary = result.scalar_one_or_none()
 
+    # Fallback: if no today snapshot, try most recent available
+    if not existing_summary:
+        from sqlalchemy import desc
+        stmt = (
+            select(PortfolioDailySummary)
+            .where(PortfolioDailySummary.user_id == session.user_id)
+            .order_by(desc(PortfolioDailySummary.snapshot_date))
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        existing_summary = result.scalar_one_or_none()
+
     if existing_summary:
         # Serve from stored snapshot (no broker API call)
         holdings_stmt = select(PortfolioSnapshot).where(
             PortfolioSnapshot.user_id == session.user_id,
-            PortfolioSnapshot.snapshot_date == today,
+            PortfolioSnapshot.snapshot_date == existing_summary.snapshot_date,
         )
         holdings_result = await db.execute(holdings_stmt)
         snapshot_holdings = holdings_result.scalars().all()

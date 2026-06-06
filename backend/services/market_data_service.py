@@ -102,24 +102,35 @@ class MarketDataService(IMarketDataService):
             return quote
         except Exception as e:
             logger.warning("Finnhub fetch failed for %s: %s", ticker, str(e))
-            # Return last cached value with is_stale=True
-            if cached:
-                try:
-                    stale_quote = PriceQuote.model_validate_json(cached)
-                    stale_quote.is_stale = True
-                    return stale_quote
-                except Exception:
-                    pass
-            # No cached data available — return a zero quote marked stale
-            return PriceQuote(
-                ticker=ticker,
-                price=Decimal("0"),
-                previous_close=Decimal("0"),
-                change=Decimal("0"),
-                change_percent=Decimal("0"),
-                timestamp=datetime.now(timezone.utc),
-                is_stale=True,
-            )
+
+        # Fallback: try yfinance for current price
+        try:
+            quote = await self._fetch_yfinance_price(ticker)
+            if quote and quote.price > 0:
+                ttl = MARKET_HOURS_TTL if _is_market_hours() else OFF_HOURS_TTL
+                await self._redis.set(cache_key, quote.model_dump_json(), ex=ttl)
+                return quote
+        except Exception as e:
+            logger.warning("yfinance price fallback failed for %s: %s", ticker, str(e))
+
+        # Return last cached value with is_stale=True
+        if cached:
+            try:
+                stale_quote = PriceQuote.model_validate_json(cached)
+                stale_quote.is_stale = True
+                return stale_quote
+            except Exception:
+                pass
+        # No cached data available — return a zero quote marked stale
+        return PriceQuote(
+            ticker=ticker,
+            price=Decimal("0"),
+            previous_close=Decimal("0"),
+            change=Decimal("0"),
+            change_percent=Decimal("0"),
+            timestamp=datetime.now(timezone.utc),
+            is_stale=True,
+        )
 
     async def get_batch_prices(self, tickers: list[str]) -> dict[str, PriceQuote]:
         """Return current price quotes for multiple tickers concurrently.
@@ -221,6 +232,47 @@ class MarketDataService(IMarketDataService):
             timestamp=datetime.now(timezone.utc),
             is_stale=False,
         )
+
+    async def _fetch_yfinance_price(self, ticker: str) -> PriceQuote | None:
+        """Fetch current price from yfinance as fallback (NSE tickers get .NS suffix)."""
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._yfinance_price_sync, ticker)
+
+    def _yfinance_price_sync(self, ticker: str) -> PriceQuote | None:
+        """Synchronous yfinance price fetch."""
+        try:
+            import yfinance
+
+            # NSE tickers need .NS suffix
+            yf_ticker = f"{ticker}.NS"
+            stock = yfinance.Ticker(yf_ticker)
+            info = stock.fast_info
+
+            current_price = Decimal(str(getattr(info, "last_price", 0) or 0))
+            previous_close = Decimal(str(getattr(info, "previous_close", 0) or 0))
+
+            if current_price <= 0:
+                return None
+
+            change = current_price - previous_close
+            change_percent = (
+                (change / previous_close * Decimal("100")) if previous_close > 0 else Decimal("0")
+            )
+
+            return PriceQuote(
+                ticker=ticker,
+                price=current_price,
+                previous_close=previous_close,
+                change=change,
+                change_percent=change_percent,
+                timestamp=datetime.now(timezone.utc),
+                is_stale=False,
+            )
+        except Exception as e:
+            logger.debug("yfinance price fetch failed for %s: %s", ticker, str(e))
+            return None
 
     async def _wait_for_rate_limit(self) -> None:
         """Wait if we've hit the Finnhub rate limit (60 req/min)."""
