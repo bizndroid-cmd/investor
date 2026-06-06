@@ -262,10 +262,11 @@ class GrowwConnector(IBrokerConnector):
     async def is_connected(self, user_id: UUID) -> bool:
         """Check if the user has a valid Groww connection.
         
-        Returns True if there's a stored token OR if the access token is configured in settings.
+        Only checks the user's stored token in the database (not env fallback).
         """
-        token = await self._get_access_token(user_id)
-        return token is not None and token != ""
+        async with AsyncSessionLocal() as db:
+            tokens = await get_broker_tokens(db, user_id, self.broker_id)
+        return tokens is not None
 
     async def get_holdings(self, user_id: UUID) -> list[RawHolding]:
         """Fetch holdings from GET /v1/holdings/user."""
