@@ -12,7 +12,7 @@ export function useNews(filters: NewsFeedParams = {}) {
 export function useRefreshNews() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: triggerRefresh,
+    mutationFn: (source?: string) => triggerRefresh(source),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["news"] });
     },

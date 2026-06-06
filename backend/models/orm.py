@@ -215,6 +215,9 @@ class NewsArticle(Base):
         ForeignKey("collection_runs.id", ondelete="SET NULL"),
         nullable=True,
     )
+    source_type: Mapped[str] = mapped_column(
+        String(20), default="rss", server_default=sa.text("'rss'")
+    )  # "rss" or "newsapi_ai"
 
     user: Mapped["User"] = relationship(back_populates="news_articles")
     collection_run: Mapped["CollectionRun | None"] = relationship(back_populates="articles")

@@ -41,6 +41,7 @@ export interface NewsFeedParams {
   sentiment?: SentimentScore;
   impact_level?: ImpactLevel;
   ticker?: string;
+  source_type?: "rss" | "newsapi_ai";
   page?: number;
   page_size?: number;
 }
@@ -55,6 +56,7 @@ export async function getNewsFeed(
   if (params.sentiment) searchParams.set("sentiment", params.sentiment);
   if (params.impact_level) searchParams.set("impact_level", params.impact_level);
   if (params.ticker) searchParams.set("ticker", params.ticker);
+  if (params.source_type) searchParams.set("source_type", params.source_type);
   if (params.page) searchParams.set("page", String(params.page));
   if (params.page_size) searchParams.set("page_size", String(params.page_size));
 
@@ -64,8 +66,9 @@ export async function getNewsFeed(
   return apiFetch<PaginatedNewsResponse>(path);
 }
 
-export async function triggerRefresh(): Promise<NewsRefreshStatus> {
-  return apiFetch<NewsRefreshStatus>("/news/refresh", {
+export async function triggerRefresh(source?: string): Promise<NewsRefreshStatus> {
+  const params = source ? `?source=${source}` : "";
+  return apiFetch<NewsRefreshStatus>(`/news/refresh${params}`, {
     method: "POST",
   });
 }

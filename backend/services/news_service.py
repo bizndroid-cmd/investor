@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from uuid import UUID
 
 import redis.asyncio as aioredis
@@ -25,6 +26,25 @@ from backend.services.news_analyzer import NewsAnalyzer
 logger = logging.getLogger(__name__)
 
 CACHE_TTL = 300  # 5 minutes
+
+# Path to the briefing prompt file
+_BRIEFING_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "briefing.md"
+
+
+def _load_briefing_system_prompt() -> str:
+    """Load the system prompt from the prompts/briefing.md file.
+    
+    Falls back to a default if the file is missing.
+    """
+    try:
+        content = _BRIEFING_PROMPT_PATH.read_text(encoding="utf-8")
+        # Strip the markdown title line if present
+        lines = content.strip().split("\n")
+        if lines and lines[0].startswith("# "):
+            lines = lines[1:]
+        return "\n".join(lines).strip()
+    except FileNotFoundError:
+        return "You are a financial analyst creating daily portfolio briefings for Indian equity investors. Be concise and actionable."
 
 
 class NewsService(INewsService):
@@ -48,6 +68,7 @@ class NewsService(INewsService):
         sentiment: str | None = None,
         impact_level: str | None = None,
         ticker: str | None = None,
+        source_type: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> PaginatedNewsResponse:
@@ -71,15 +92,17 @@ class NewsService(INewsService):
             stmt = stmt.where(NewsArticle.impact_level == impact_level)
         if ticker:
             stmt = stmt.where(NewsArticle.related_tickers.any(ticker))
+        if source_type:
+            stmt = stmt.where(NewsArticle.source_type == source_type)
 
         # Count total matching records
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total_result = await self._db.execute(count_stmt)
         total = total_result.scalar() or 0
 
-        # Sort by relevance_score DESC, then published_at DESC
+        # Sort by published_at DESC (latest first)
         stmt = stmt.order_by(
-            desc(NewsArticle.relevance_score),
+            desc(NewsArticle.published_at),
             desc(NewsArticle.published_at),
         )
 
@@ -105,22 +128,42 @@ class NewsService(INewsService):
 
         return response
 
-    async def trigger_refresh(self, user_id: UUID) -> RefreshStatus:
+    async def trigger_refresh(self, user_id: UUID, source: str | None = None) -> RefreshStatus:
         """Fetch news articles and store them, then kick off background analysis.
         
-        Returns immediately after fetching/storing. Analysis happens async.
+        Args:
+            user_id: The user triggering the refresh.
+            source: Which source to fetch from: 'rss', 'newsapi_ai', or None/all (both).
         """
         try:
             # Get user's portfolio tickers from existing holdings
             portfolio_tickers = await self._get_user_tickers(user_id)
 
-            # Fetch articles via aggregator (fast — just HTTP to RSS feeds)
-            raw_articles = await self._aggregator.fetch_articles(portfolio_tickers)
+            # Fetch articles based on source selection
+            if source == "rss":
+                raw_articles = await self._aggregator._fetch_from_rss(portfolio_tickers)
+                source_type = "rss"
+            elif source == "newsapi_ai":
+                raw_articles = await self._aggregator._fetch_from_newsapi_ai(portfolio_tickers)
+                source_type = "newsapi_ai"
+            else:
+                raw_articles = await self._aggregator.fetch_articles(portfolio_tickers)
+                source_type = "rss"  # default for combined (will be overridden per-article below)
+
             articles_fetched = len(raw_articles)
 
-            # Store raw articles (fast — DB inserts)
+            # Store raw articles with source_type
             if raw_articles:
-                await self._aggregator.store_articles(self._db, user_id, raw_articles)
+                if source in ("rss", "newsapi_ai"):
+                    await self._aggregator.store_articles(self._db, user_id, raw_articles, source_type=source_type)
+                else:
+                    # Combined fetch: tag RSS vs newsapi_ai by source_name
+                    rss_articles = [a for a in raw_articles if "(via NewsAPI.ai)" not in a.source_name]
+                    newsapi_articles = [a for a in raw_articles if "(via NewsAPI.ai)" in a.source_name]
+                    if rss_articles:
+                        await self._aggregator.store_articles(self._db, user_id, rss_articles, source_type="rss")
+                    if newsapi_articles:
+                        await self._aggregator.store_articles(self._db, user_id, newsapi_articles, source_type="newsapi_ai")
 
             # Kick off analysis in the background (don't wait)
             import asyncio
@@ -289,7 +332,7 @@ class NewsService(INewsService):
             import time as _time
 
             messages = [
-                SystemMessage(content="You are a financial analyst creating daily portfolio briefings for Indian equity investors. Be concise and actionable."),
+                SystemMessage(content=_load_briefing_system_prompt()),
                 HumanMessage(content=prompt),
             ]
             start = _time.time()

@@ -25,6 +25,7 @@ async def get_news_feed(
     sentiment: str | None = Query(None, description="Filter by sentiment: bullish, bearish, neutral"),
     impact_level: str | None = Query(None, description="Filter by impact: high, medium, low"),
     ticker: str | None = Query(None, description="Filter by ticker symbol"),
+    source_type: str | None = Query(None, description="Filter by source: rss, newsapi_ai"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     session: Session = Depends(get_current_user),
@@ -36,6 +37,7 @@ async def get_news_feed(
         sentiment=sentiment,
         impact_level=impact_level,
         ticker=ticker,
+        source_type=source_type,
         page=page,
         page_size=page_size,
     )
@@ -43,11 +45,15 @@ async def get_news_feed(
 
 @router.post("/refresh", response_model=RefreshStatus)
 async def trigger_refresh(
+    source: str | None = Query(None, description="Source to fetch from: rss, newsapi_ai, or all (default)"),
     session: Session = Depends(get_current_user),
     news_service=Depends(get_news_service),
 ) -> RefreshStatus:
-    """Trigger a manual news refresh for the current user."""
-    return await news_service.trigger_refresh(user_id=session.user_id)
+    """Trigger a manual news refresh for the current user.
+    
+    Optionally specify source: 'rss', 'newsapi_ai', or 'all' (default).
+    """
+    return await news_service.trigger_refresh(user_id=session.user_id, source=source)
 
 
 @router.get("/briefing")

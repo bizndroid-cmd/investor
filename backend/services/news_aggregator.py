@@ -48,7 +48,7 @@ class NewsAggregator:
         self._base_delay = 1.0  # seconds
 
     async def fetch_articles(self, portfolio_tickers: list[str]) -> list[RawNewsArticle]:
-        """Fetch articles from Indian financial RSS feeds.
+        """Fetch articles from Indian financial RSS feeds and newsapi.ai.
 
         Args:
             portfolio_tickers: List of ticker symbols from the user's portfolio.
@@ -56,12 +56,27 @@ class NewsAggregator:
         Returns:
             List of raw news articles from Indian financial sources.
         """
-        raw_articles = await self._fetch_from_rss(portfolio_tickers)
-        filtered = self._filter_by_time(raw_articles)
+        # Fetch from both sources concurrently
+        rss_articles = await self._fetch_from_rss(portfolio_tickers)
+        newsapi_articles = await self._fetch_from_newsapi_ai(portfolio_tickers)
+
+        # Combine and deduplicate
+        all_articles = rss_articles + newsapi_articles
+        seen_titles: set[str] = set()
+        unique: list[RawNewsArticle] = []
+        for article in all_articles:
+            key = article.title.strip().lower()
+            if key not in seen_titles:
+                seen_titles.add(key)
+                unique.append(article)
+
+        filtered = self._filter_by_time(unique)
+        logger.info("Total articles: %d (RSS: %d, NewsAPI.ai: %d)", len(filtered), len(rss_articles), len(newsapi_articles))
         return filtered
 
     async def store_articles(
-        self, db: AsyncSession, user_id: UUID, articles: list[RawNewsArticle]
+        self, db: AsyncSession, user_id: UUID, articles: list[RawNewsArticle],
+        source_type: str = "rss",
     ) -> int:
         """Persist raw articles to the news_articles table.
 
@@ -69,6 +84,7 @@ class NewsAggregator:
             db: Async database session.
             user_id: The user who owns these articles.
             articles: List of raw articles to store.
+            source_type: "rss" or "newsapi_ai"
 
         Returns:
             Number of articles successfully stored.
@@ -100,6 +116,7 @@ class NewsAggregator:
                 published_at=article.published_at,
                 raw_content=article.raw_content,
                 collection_date=today,
+                source_type=source_type,
                 is_analyzed=False,
             )
             db.add(news_record)
@@ -139,6 +156,96 @@ class NewsAggregator:
 
         logger.info("Fetched %d unique articles from %d RSS feeds", len(unique), len(RSS_FEEDS))
         return unique
+
+    async def _fetch_from_newsapi_ai(self, portfolio_tickers: list[str]) -> list[RawNewsArticle]:
+        """Fetch articles from newsapi.ai (Event Registry) filtered by India location.
+
+        Uses the eventregistry SDK to search for business/finance news
+        from Indian sources about portfolio tickers.
+        """
+        if not settings.newsapi_ai_key:
+            return []
+
+        telemetry = get_telemetry_service()
+        start = time.time()
+
+        try:
+            from eventregistry import EventRegistry, QueryArticlesIter, QueryItems
+            import asyncio
+
+            # Run synchronous eventregistry SDK in a thread
+            def _fetch_sync():
+                er = EventRegistry(apiKey=settings.newsapi_ai_key)
+
+                # Build keywords from portfolio tickers (OR logic)
+                # Add general Indian market terms
+                keywords = list(portfolio_tickers[:15])  # Limit to avoid huge queries
+                keywords.extend(["NSE", "BSE", "Sensex", "Nifty"])
+
+                q = QueryArticlesIter(
+                    keywords=QueryItems.OR(keywords),
+                    sourceLocationUri=er.getLocationUri("India"),
+                    lang="eng",
+                    dateStart=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                    isDuplicateFilter="skipDuplicates",
+                    dataType="news",
+                )
+
+                articles = []
+                for article in q.execQuery(er, sortBy="date", maxItems=50):
+                    title = article.get("title", "")
+                    body = article.get("body", "")
+                    source_name = article.get("source", {}).get("title", "Unknown")
+                    source_url = article.get("url", "")
+                    pub_date_str = article.get("dateTimePub", "")
+
+                    if not title or not body:
+                        continue
+
+                    try:
+                        pub_date = datetime.fromisoformat(pub_date_str.replace("Z", "+00:00"))
+                    except (ValueError, TypeError):
+                        pub_date = datetime.now(timezone.utc)
+
+                    articles.append(RawNewsArticle(
+                        title=title,
+                        source_name=f"{source_name} (via NewsAPI.ai)",
+                        source_url=source_url,
+                        published_at=pub_date,
+                        raw_content=body[:2000],  # Truncate long bodies
+                    ))
+
+                return articles
+
+            # Run in thread pool to not block async loop
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, _fetch_sync)
+
+            latency = (time.time() - start) * 1000
+            telemetry.record_api_call(
+                service="NewsAPI.ai",
+                endpoint="QueryArticlesIter",
+                method="GET",
+                status_code=200,
+                latency_ms=latency,
+                success=True,
+            )
+            logger.info("Fetched %d articles from NewsAPI.ai (India)", len(result))
+            return result
+
+        except Exception as e:
+            latency = (time.time() - start) * 1000
+            telemetry.record_api_call(
+                service="NewsAPI.ai",
+                endpoint="QueryArticlesIter",
+                method="GET",
+                status_code=None,
+                latency_ms=latency,
+                success=False,
+                error=str(e),
+            )
+            logger.warning("NewsAPI.ai fetch failed: %s", str(e))
+            return []
 
     async def _fetch_rss(self, client: httpx.AsyncClient, url: str) -> list[RawNewsArticle]:
         """Parse a single RSS feed URL into RawNewsArticle objects."""

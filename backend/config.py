@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     news_collection_times: str = "07:00,18:00"  # IST, comma-separated HH:MM
     news_retention_days: int = 90  # Historical window for pattern analysis
     news_max_articles_per_user: int = 10000  # Safety cap
+    newsapi_ai_key: str = ""  # newsapi.ai (Event Registry) API key
 
     # Broker API Keys
     groww_api_key: str = ""

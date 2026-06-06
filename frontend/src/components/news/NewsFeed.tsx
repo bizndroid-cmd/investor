@@ -52,11 +52,6 @@ export function NewsFeed() {
     setStage("confirming");
   };
 
-  const handleConfirmRefresh = () => {
-    setStage("fetching");
-    refreshMutation.mutate();
-  };
-
   const handleCancelRefresh = () => {
     setStage("idle");
   };
@@ -116,24 +111,26 @@ export function NewsFeed() {
                 Pull fresh news from live sources?
               </p>
               <p className="text-xs text-amber-700 mt-1">
-                This will fetch articles from RSS feeds and use AI tokens to analyze them.
-                {llmStatus?.status === "rate_limited" && (
-                  <span className="font-medium"> ⚠️ AI is currently rate-limited — articles will be stored but analysis may be delayed.</span>
-                )}
-                {llmStatus?.status === "operational" && (
-                  <span> Estimated cost: ~10 API calls for sentiment analysis.</span>
-                )}
+                Choose which source to fetch from. This will store new articles and use AI tokens for analysis.
               </p>
-              <p className="text-xs text-amber-600 mt-1">
-                💡 Tip: Use the date and filter options below to browse stored news for free.
-              </p>
-              <div className="flex gap-2 mt-3">
+              <div className="flex flex-wrap gap-2 mt-3">
                 <button
-                  onClick={handleConfirmRefresh}
-                  className="inline-flex items-center gap-1 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700"
+                  onClick={() => { setStage("fetching"); refreshMutation.mutate("rss"); }}
+                  className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
                 >
-                  <Wifi className="h-3 w-3" />
-                  Yes, pull fresh news
+                  📡 RSS Feeds Only
+                </button>
+                <button
+                  onClick={() => { setStage("fetching"); refreshMutation.mutate("newsapi_ai"); }}
+                  className="rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700"
+                >
+                  🌐 NewsAPI.ai Only
+                </button>
+                <button
+                  onClick={() => { setStage("fetching"); refreshMutation.mutate(undefined); }}
+                  className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700"
+                >
+                  ⚡ Both Sources
                 </button>
                 <button
                   onClick={handleCancelRefresh}
