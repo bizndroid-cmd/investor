@@ -7,6 +7,7 @@ import { AlertsPage } from "@/pages/AlertsPage";
 import { BrokersPage } from "@/pages/BrokersPage";
 import { ComparisonPage } from "@/pages/ComparisonPage";
 import { NewsPage } from "@/pages/NewsPage";
+import { PredictionsPage } from "@/pages/PredictionsPage";
 import { NerdStatsPage } from "@/pages/NerdStatsPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { ToastContainer } from "@/components/common/Toast";
@@ -36,6 +37,7 @@ function App() {
           <Route path="/brokers" element={<BrokersPage />} />
           <Route path="/comparison" element={<ComparisonPage />} />
           <Route path="/news" element={<NewsPage />} />
+          <Route path="/predictions" element={<PredictionsPage />} />
           <Route path="/nerd-stats" element={<NerdStatsPage />} />
         </Route>
       </Routes>
