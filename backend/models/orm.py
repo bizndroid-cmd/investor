@@ -333,3 +333,40 @@ class PortfolioDailySummary(Base):
     created_at: Mapped[datetime] = mapped_column(
         sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
     )
+
+
+class PredictionRecord(Base):
+    """Stores LLM predictions from briefings for accuracy tracking."""
+
+    __tablename__ = "prediction_records"
+    __table_args__ = (
+        sa.Index("idx_prediction_records_user_date", "user_id", "prediction_date"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    prediction_date: Mapped[datetime] = mapped_column(sa.Date, nullable=False)
+    # Overall market mood prediction
+    market_mood: Mapped[str] = mapped_column(String(10), nullable=False)  # bullish/bearish/neutral
+    market_mood_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Per-ticker predictions stored as JSON
+    ticker_predictions: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
+    suggestions: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
+    # Full briefing text
+    briefing_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Confidence score (computed after market data comes in)
+    confidence_score: Mapped[float | None] = mapped_column(sa.Float, nullable=True)  # 0-100
+    score_computed_at: Mapped[datetime | None] = mapped_column(
+        sa.TIMESTAMP(timezone=True), nullable=True
+    )
+    # Score breakdown
+    mood_accuracy: Mapped[float | None] = mapped_column(sa.Float, nullable=True)  # 0-100
+    ticker_accuracy: Mapped[float | None] = mapped_column(sa.Float, nullable=True)  # 0-100
+    # Metadata
+    provider: Mapped[str] = mapped_column(String(20), nullable=False)
+    model: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
+    )
