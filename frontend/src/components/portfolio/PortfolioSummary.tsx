@@ -38,7 +38,7 @@ export function PortfolioSummary() {
   }
 
   const cards = [
-    { label: "Total Value", value: formatCurrency(portfolio.total_value) },
+    { label: "Current Market Value", value: formatCurrency(portfolio.total_value) },
     { label: "Total Invested", value: formatCurrency(portfolio.total_invested) },
     {
       label: "Total Gain/Loss",
