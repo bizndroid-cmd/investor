@@ -177,10 +177,11 @@ class NewsAggregator:
             def _fetch_sync():
                 er = EventRegistry(apiKey=settings.newsapi_ai_key)
 
-                # Build keywords from portfolio tickers (OR logic)
-                # Add general Indian market terms
-                keywords = list(portfolio_tickers[:15])  # Limit to avoid huge queries
-                keywords.extend(["NSE", "BSE", "Sensex", "Nifty"])
+                # Build keywords from portfolio tickers (limit to 10 for free tier)
+                keywords = list(portfolio_tickers[:10])
+                # Only add market terms if we have room (max 15 total for free tier)
+                if len(keywords) < 12:
+                    keywords.extend(["Sensex", "Nifty", "NSE"])
 
                 q = QueryArticlesIter(
                     keywords=QueryItems.OR(keywords),
