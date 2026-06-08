@@ -1,0 +1,42 @@
+# =============================================================================
+# CI Pipeline — Runs on every push and PR
+# Lints, builds, and validates the codebase
+# =============================================================================
+name: CI
+
+on:
+  push:
+    branches: [main, dev, staging]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  backend-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Check imports
+        run: |
+          cd backend
+          python -c "from backend.main import app; print(f'✅ Backend OK: {len(app.routes)} routes')"
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: cd frontend && npm ci
+      - name: TypeScript check + Build
+        run: cd frontend && npm run build

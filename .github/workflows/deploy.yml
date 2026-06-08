@@ -1,13 +1,16 @@
 # =============================================================================
-# GitHub Actions — Deploy on merge to main
-# SSHs into VM, pulls code, rebuilds backend container (zero-downtime)
+# Deploy to Production — Triggers on merge to main
+# SSHs into EC2, pulls code, rebuilds, sends email notification
 # =============================================================================
 #
 # Required GitHub Secrets:
-#   VM_HOST      — IP or hostname of your VM
-#   VM_USER      — SSH username (e.g., root or deploy)
-#   VM_SSH_KEY   — Private SSH key for authentication
-#   VM_APP_PATH  — Path to the app on the VM (e.g., /opt/investor)
+#   VM_HOST          — EC2 public IP
+#   VM_USER          — SSH username (ec2-user)
+#   VM_SSH_KEY       — Private SSH key contents
+#   VM_APP_PATH      — App path on server (/home/ec2-user/investor)
+#   GMAIL_USER       — Gmail address for sending notifications
+#   GMAIL_APP_PASS   — Gmail App Password (not account password)
+#   NOTIFY_EMAIL     — Email to receive deploy notifications
 #
 name: Deploy to Production
 
@@ -19,6 +22,17 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version and changelog
+        id: version
+        run: |
+          VERSION=$(cat VERSION)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          # Get last commit message
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "commit_msg=$COMMIT_MSG" >> $GITHUB_OUTPUT
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
         with:
@@ -28,23 +42,70 @@ jobs:
           script: |
             cd ${{ secrets.VM_APP_PATH }}
             git pull origin main
-            
+
             # Check if frontend changed
             FRONTEND_CHANGED=$(git diff HEAD~1 --name-only | grep "^frontend/" || true)
-            
+
             if [ -n "$FRONTEND_CHANGED" ]; then
               echo "Frontend changed — rebuilding all..."
               docker compose -f docker-compose.prod.yml build frontend-builder backend
-              docker compose -f docker-compose.prod.yml up -d frontend-builder
+              docker compose -f docker-compose.prod.yml up -d --force-recreate frontend-builder backend
               sleep 5
-              docker compose -f docker-compose.prod.yml up -d --no-deps backend
+              docker compose -f docker-compose.prod.yml restart caddy
             else
               echo "Backend only — zero-downtime swap..."
               docker compose -f docker-compose.prod.yml build backend
-              docker compose -f docker-compose.prod.yml up -d --no-deps backend
+              docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate backend
             fi
-            
-            # Wait and verify
+
+            # Run migrations
             sleep 10
             curl -sf http://localhost:8000/health || exit 1
-            echo "✅ Deployment successful"
+            echo "✅ Deploy successful"
+
+      - name: Send deploy notification email
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.GMAIL_USER }}
+          password: ${{ secrets.GMAIL_APP_PASS }}
+          subject: "✅ Deploy v${{ steps.version.outputs.version }} — Investor App"
+          to: ${{ secrets.NOTIFY_EMAIL }}
+          from: "Investor Deploy Bot <${{ secrets.GMAIL_USER }}>"
+          body: |
+            🚀 **Deployment Successful**
+
+            **Version:** v${{ steps.version.outputs.version }}
+            **Branch:** main
+            **Commit:** ${{ steps.version.outputs.commit_msg }}
+            **Time:** ${{ github.event.head_commit.timestamp }}
+            **Author:** ${{ github.actor }}
+            **Server:** ${{ secrets.VM_HOST }}
+
+            **What changed:**
+            ${{ steps.version.outputs.commit_msg }}
+
+            ---
+            View commit: https://github.com/${{ github.repository }}/commit/${{ github.sha }}
+
+      - name: Send failure notification
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.GMAIL_USER }}
+          password: ${{ secrets.GMAIL_APP_PASS }}
+          subject: "❌ Deploy FAILED — Investor App"
+          to: ${{ secrets.NOTIFY_EMAIL }}
+          from: "Investor Deploy Bot <${{ secrets.GMAIL_USER }}>"
+          body: |
+            ⚠️ **Deployment Failed**
+
+            **Branch:** main
+            **Commit:** ${{ github.sha }}
+            **Author:** ${{ github.actor }}
+
+            Check logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
