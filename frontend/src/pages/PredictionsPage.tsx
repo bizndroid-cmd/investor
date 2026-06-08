@@ -180,13 +180,12 @@ function ScoreCard({
   value,
   subtitle,
   icon,
-  color,
 }: {
   label: string;
   value: string;
   subtitle: string;
   icon: React.ReactNode;
-  color: string;
+  color?: string;
 }) {
   return (
     <div className="rounded-lg border bg-card p-4">

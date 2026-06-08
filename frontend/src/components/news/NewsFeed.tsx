@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Loader2, Sparkles, CheckCircle2, Database, Wifi, AlertTriangle } from "lucide-react";
-import { useNews, useRefreshNews, useLLMStatus } from "@/hooks/useNews";
+import { useNews, useRefreshNews } from "@/hooks/useNews";
 import { NewsItem } from "./NewsItem";
 import { NewsFilters, type NewsFilterState } from "./NewsFilters";
 
@@ -11,7 +11,6 @@ export function NewsFeed() {
   const [page, setPage] = useState(1);
   const { data, isLoading, isError, refetch } = useNews({ ...filters, page, page_size: 20 });
   const refreshMutation = useRefreshNews();
-  const { data: llmStatus } = useLLMStatus();
   const [stage, setStage] = useState<RefreshStage>("idle");
   const [articlesFetched, setArticlesFetched] = useState(0);
 
