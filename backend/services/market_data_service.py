@@ -152,10 +152,10 @@ class MarketDataService(IMarketDataService):
             except Exception as e:
                 logger.warning("Groww LTP batch fetch failed: %s", str(e))
 
-        # For any tickers not resolved by Groww, fall back to Finnhub
+        # For any tickers not resolved by Groww, fall back to Finnhub/yfinance
         remaining = [t for t in tickers if t not in quotes]
-        if remaining and self._finnhub_api_key:
-            semaphore = asyncio.Semaphore(10)
+        if remaining:
+            semaphore = asyncio.Semaphore(5)
 
             async def _fetch_with_semaphore(ticker: str) -> tuple[str, PriceQuote]:
                 async with semaphore:
@@ -170,7 +170,8 @@ class MarketDataService(IMarketDataService):
                     logger.error("Batch price fetch error: %s", str(result))
                     continue
                 ticker, quote = result
-                quotes[ticker] = quote
+                if quote.price > 0:
+                    quotes[ticker] = quote
 
         return quotes
 
