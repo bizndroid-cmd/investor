@@ -149,14 +149,19 @@ export function PortfolioBriefing() {
                   {data.is_cached && " (cached)"}
                   {data.is_stub && " (fallback)"}
                 </span>
-                {data.last_news_pull && (
+                {data.provider && (
                   <span className="text-xs text-gray-400">
-                    · News pulled: {new Date(data.last_news_pull).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    · AI: {data.provider}/{data.model}
                   </span>
                 )}
-                {data.collection_date && (
+                {data.articles_used && (
                   <span className="text-xs text-gray-400">
-                    · Data date: {data.collection_date}
+                    · {data.articles_used} articles analyzed
+                  </span>
+                )}
+                {data.last_news_pull && (
+                  <span className="text-xs text-gray-400">
+                    · News from: {new Date(data.last_news_pull).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                   </span>
                 )}
               </div>

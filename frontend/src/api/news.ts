@@ -83,6 +83,9 @@ export interface BriefingResponse {
   collection_date?: string;
   last_news_pull?: string | null;
   cache_message?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  articles_used?: number | null;
   error_reason?: "rate_limited" | "error" | "disabled" | "no_data" | null;
   error_message?: string | null;
 }

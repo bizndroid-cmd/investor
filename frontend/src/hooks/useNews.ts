@@ -23,8 +23,8 @@ export function useBriefing() {
   return useQuery({
     queryKey: ["briefing"],
     queryFn: getPortfolioBriefing,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    enabled: false, // Only fetch when manually triggered via refetch
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
   });
 }
 

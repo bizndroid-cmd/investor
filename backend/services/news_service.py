@@ -431,6 +431,9 @@ class NewsService(INewsService):
             "collection_date": data_date.isoformat(),
             "last_news_pull": last_fetched_at.isoformat() if last_fetched_at else None,
             "cache_message": None,
+            "provider": settings.llm_provider,
+            "model": getattr(settings, f"{settings.llm_provider}_model", "unknown"),
+            "articles_used": len(articles),
             "error_reason": None,
             "error_message": None,
         }
