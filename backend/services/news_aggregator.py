@@ -193,7 +193,7 @@ class NewsAggregator:
                 )
 
                 articles = []
-                for article in q.execQuery(er, sortBy="date", maxItems=50):
+                for article in q.execQuery(er, sortBy="date", maxItems=100):
                     title = article.get("title", "")
                     body = article.get("body", "")
                     source_name = article.get("source", {}).get("title", "Unknown")
