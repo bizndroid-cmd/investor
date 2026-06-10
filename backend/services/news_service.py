@@ -372,6 +372,19 @@ class NewsService(INewsService):
                 news_last_fetched_at=last_fetched_at,
             )
 
+            # 10. Store prediction record for accuracy tracking
+            try:
+                await self._store_prediction_from_briefing(
+                    user_id=user_id,
+                    prediction_date=data_date,
+                    briefing_text=briefing_text,
+                    portfolio_tickers=portfolio_tickers,
+                    provider=settings.llm_provider,
+                    model=getattr(settings, f"{settings.llm_provider}_model", "unknown"),
+                )
+            except Exception as pred_err:
+                logger.warning("Failed to store prediction: %s", str(pred_err))
+
         except Exception as exc:
             logger.error("Briefing LLM call failed: %s", str(exc))
 
@@ -528,6 +541,105 @@ class NewsService(INewsService):
             news_last_fetched_at=news_last_fetched_at,
         )
         self._db.add(cache_entry)
+        await self._db.commit()
+
+    async def _store_prediction_from_briefing(
+        self,
+        *,
+        user_id: UUID,
+        prediction_date,
+        briefing_text: str,
+        portfolio_tickers: list[str],
+        provider: str,
+        model: str,
+    ) -> None:
+        """Extract prediction signals from briefing text and store for accuracy tracking.
+
+        Parses the briefing for market mood and per-ticker sentiment,
+        then stores in prediction_records for later scoring.
+        """
+        from backend.models.orm import PredictionRecord
+        import json
+
+        # Simple heuristic extraction from briefing text
+        text_lower = briefing_text.lower()
+
+        # Determine overall market mood from briefing
+        bullish_signals = text_lower.count("bullish") + text_lower.count("positive") + text_lower.count("upside")
+        bearish_signals = text_lower.count("bearish") + text_lower.count("negative") + text_lower.count("downside")
+
+        if bullish_signals > bearish_signals:
+            market_mood = "bullish"
+        elif bearish_signals > bullish_signals:
+            market_mood = "bearish"
+        else:
+            market_mood = "neutral"
+
+        # Extract per-ticker predictions
+        ticker_predictions = []
+        for ticker in portfolio_tickers:
+            # Look for ticker mentions and nearby sentiment words
+            ticker_lower = ticker.lower()
+            if ticker_lower in text_lower:
+                # Find context around the ticker mention
+                idx = text_lower.index(ticker_lower)
+                context = text_lower[max(0, idx - 100):idx + 100]
+
+                if any(w in context for w in ["positive", "bullish", "buy", "upside", "rally"]):
+                    sentiment = "bullish"
+                    direction = "up"
+                elif any(w in context for w in ["negative", "bearish", "sell", "downside", "fall"]):
+                    sentiment = "bearish"
+                    direction = "down"
+                else:
+                    sentiment = "neutral"
+                    direction = "flat"
+
+                ticker_predictions.append({
+                    "ticker": ticker,
+                    "sentiment": sentiment,
+                    "expected_direction": direction,
+                    "confidence": "medium",
+                    "reason": "Extracted from AI briefing context",
+                })
+            else:
+                ticker_predictions.append({
+                    "ticker": ticker,
+                    "sentiment": "neutral",
+                    "expected_direction": "flat",
+                    "confidence": "low",
+                    "reason": "No mention in briefing",
+                })
+
+        # Check if prediction for this date already exists
+        from sqlalchemy import select
+        stmt = select(PredictionRecord).where(
+            PredictionRecord.user_id == user_id,
+            PredictionRecord.prediction_date == prediction_date,
+        )
+        result = await self._db.execute(stmt)
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            # Update existing prediction
+            existing.market_mood = market_mood
+            existing.ticker_predictions = json.dumps(ticker_predictions)
+            existing.briefing_text = briefing_text[:2000]
+        else:
+            # Create new prediction record
+            record = PredictionRecord(
+                user_id=user_id,
+                prediction_date=prediction_date,
+                market_mood=market_mood,
+                market_mood_reason=f"AI detected {market_mood} signals from {bullish_signals} bullish vs {bearish_signals} bearish indicators",
+                ticker_predictions=json.dumps(ticker_predictions),
+                suggestions=json.dumps([]),
+                briefing_text=briefing_text[:2000],
+                provider=provider,
+                model=model,
+            )
+            self._db.add(record)
+
         await self._db.commit()
 
     # ------------------------------------------------------------------
