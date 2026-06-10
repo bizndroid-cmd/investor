@@ -54,6 +54,10 @@
         reverse_proxy backend:8000
     }
 
+    handle /predictions/* {
+        reverse_proxy backend:8000
+    }
+
     # Frontend static files (SPA fallback)
     handle {
         root * /srv/frontend
