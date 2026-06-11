@@ -92,6 +92,13 @@ class PortfolioSnapshotService:
                 "Portfolio snapshot captured for user %s: %d holdings, total_value=%s",
                 user_id, len(portfolio.holdings), portfolio.total_value,
             )
+
+            # Auto-score any pending predictions from previous days
+            try:
+                await self._auto_score_predictions(user_id, today)
+            except Exception as score_err:
+                logger.debug("Auto-score skipped: %s", str(score_err))
+
             return True
         except Exception as e:
             await self._db.rollback()
@@ -148,6 +155,33 @@ class PortfolioSnapshotService:
 
         await self._db.commit()
         return True
+
+    async def _auto_score_predictions(self, user_id: UUID, today: date) -> None:
+        """Auto-score any unscored predictions that now have enough data."""
+        from backend.services.prediction_service import PredictionService
+        from backend.models.orm import PredictionRecord
+        from datetime import timedelta
+
+        # Find unscored predictions from the last 7 days
+        cutoff = today - timedelta(days=7)
+        stmt = select(PredictionRecord).where(
+            PredictionRecord.user_id == user_id,
+            PredictionRecord.prediction_date >= cutoff,
+            PredictionRecord.confidence_score.is_(None),
+        )
+        result = await self._db.execute(stmt)
+        unscored = result.scalars().all()
+
+        if not unscored:
+            return
+
+        svc = PredictionService(db=self._db)
+        for prediction in unscored:
+            try:
+                await svc.compute_confidence_score(user_id, prediction.prediction_date)
+                logger.info("Auto-scored prediction for %s", prediction.prediction_date)
+            except Exception:
+                pass  # Not enough data yet — will try again next time
 
     async def get_daily_summaries(
         self, user_id: UUID, days: int = 90
