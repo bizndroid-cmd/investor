@@ -82,6 +82,9 @@ class NewsCollectionScheduler:
         """Main loop: check for catch-up, then enter schedule loop."""
         await self._maybe_catch_up()
 
+        # Auto-refresh Groww token on startup (in case it expired overnight)
+        await self._auto_refresh_groww_token()
+
         while True:
             seconds_until_next = self._seconds_until_next_run()
             next_time = datetime.now(IST) + timedelta(seconds=seconds_until_next)
@@ -90,6 +93,11 @@ class NewsCollectionScheduler:
                 next_time.strftime("%Y-%m-%d %H:%M"),
                 seconds_until_next,
             )
+
+            # Check if we need to refresh Groww token before the next run
+            # (tokens expire at 6 AM IST, refresh at 5:30 AM)
+            await self._schedule_token_refresh(seconds_until_next)
+
             await asyncio.sleep(seconds_until_next)
 
             try:
@@ -499,6 +507,69 @@ class NewsCollectionScheduler:
 
         finally:
             await redis.aclose()
+
+    async def _schedule_token_refresh(self, sleep_seconds: float) -> None:
+        """If the next collection is after 6 AM IST, schedule a token refresh at 5:30 AM.
+
+        Runs the refresh in the background while sleeping for the main schedule.
+        """
+        now_ist = datetime.now(IST)
+        today = now_ist.date()
+
+        # Calculate 5:30 AM IST today (or tomorrow if already past)
+        refresh_time = datetime(today.year, today.month, today.day, 5, 30, tzinfo=IST)
+        if refresh_time <= now_ist:
+            # Already past 5:30 AM today — check tomorrow
+            tomorrow = today + timedelta(days=1)
+            refresh_time = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 5, 30, tzinfo=IST)
+
+        seconds_until_refresh = (refresh_time - now_ist).total_seconds()
+
+        # Only schedule if the refresh time falls within our sleep window
+        if 0 < seconds_until_refresh < sleep_seconds:
+            logger.info(
+                "Groww token refresh scheduled in %.0f seconds (5:30 AM IST)",
+                seconds_until_refresh,
+            )
+            # Sleep until refresh time, refresh, then the outer loop handles the rest
+            await asyncio.sleep(seconds_until_refresh)
+            await self._auto_refresh_groww_token()
+            # Remaining sleep is handled by the outer loop recalculation
+
+    async def _auto_refresh_groww_token(self) -> None:
+        """Auto-refresh Groww access token for all users using API Key + Secret.
+
+        Uses the checksum flow: SHA256(secret + timestamp) to generate a new token.
+        This runs daily before the old token expires (6 AM IST).
+        """
+        if not settings.groww_api_key or not settings.groww_api_secret:
+            logger.debug("Groww auto-refresh skipped: no API key/secret configured")
+            return
+
+        from backend.database import AsyncSessionLocal
+        from backend.models.orm import User, BrokerToken
+        from backend.connectors.groww import GrowwConnector
+        from sqlalchemy import select
+
+        connector = GrowwConnector()
+
+        # Find all users with a Groww connection
+        async with AsyncSessionLocal() as db:
+            stmt = select(BrokerToken.user_id).where(BrokerToken.broker_id == "groww")
+            result = await db.execute(stmt)
+            user_ids = [row[0] for row in result.all()]
+
+        if not user_ids:
+            logger.debug("No users with Groww connection, skipping token refresh")
+            return
+
+        for user_id in user_ids:
+            try:
+                # This calls the checksum auth flow and stores the new token
+                await connector.refresh_tokens(user_id)
+                logger.info("Groww token auto-refreshed for user %s", user_id)
+            except Exception as e:
+                logger.warning("Groww token refresh failed for user %s: %s", user_id, str(e))
 
     async def _enforce_article_cap(self) -> None:
         """Delete oldest articles if user exceeds the per-user cap."""
