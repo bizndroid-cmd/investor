@@ -97,6 +97,12 @@ class NewsCollectionScheduler:
             except Exception as e:
                 logger.error("Scheduled collection failed: %s", str(e))
 
+            # Post-collection: auto-generate briefings and score predictions
+            try:
+                await self._post_collection_tasks()
+            except Exception as e:
+                logger.error("Post-collection tasks failed: %s", str(e))
+
             # Run cleanup after first scheduled run of the day
             if not self._first_run_done:
                 self._first_run_done = True
@@ -415,6 +421,84 @@ class NewsCollectionScheduler:
 
         # Enforce per-user article cap
         await self._enforce_article_cap()
+
+    async def _post_collection_tasks(self) -> None:
+        """Run after news collection: generate briefing, snapshot portfolio, score predictions.
+
+        This runs for all users after each scheduled news collection.
+        """
+        from backend.database import AsyncSessionLocal
+        from backend.models.orm import User
+        from sqlalchemy import select
+
+        async with AsyncSessionLocal() as db:
+            stmt = select(User.id)
+            result = await db.execute(stmt)
+            user_ids = [row[0] for row in result.all()]
+
+        if not user_ids:
+            return
+
+        for user_id in user_ids:
+            try:
+                await self._run_daily_tasks_for_user(user_id)
+            except Exception as e:
+                logger.error("Post-collection tasks failed for user %s: %s", user_id, str(e))
+
+    async def _run_daily_tasks_for_user(self, user_id) -> None:
+        """Run daily automated tasks for a single user."""
+        from backend.database import AsyncSessionLocal
+        from backend.dependencies import create_llm_service
+        from backend.services.news_aggregator import NewsAggregator
+        from backend.services.news_analyzer import NewsAnalyzer
+        from backend.services.news_service import NewsService
+        from backend.services.portfolio_snapshot_service import PortfolioSnapshotService
+        from backend.services.prediction_service import PredictionService
+        from backend.config import settings
+        import redis.asyncio as aioredis
+        from datetime import date
+        from zoneinfo import ZoneInfo
+
+        IST = ZoneInfo("Asia/Kolkata")
+        today = datetime.now(IST).date()
+
+        redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+
+        try:
+            # 1. Auto-generate portfolio briefing (stores prediction)
+            async with AsyncSessionLocal() as db:
+                llm_service = create_llm_service()
+                aggregator = NewsAggregator()
+                analyzer = NewsAnalyzer(llm_service=llm_service)
+                news_svc = NewsService(db=db, redis=redis, aggregator=aggregator, analyzer=analyzer)
+
+                briefing = await news_svc.generate_briefing(user_id=user_id)
+                is_cached = briefing.get("is_cached", False)
+                is_stub = briefing.get("is_stub", False)
+
+                if not is_cached and not is_stub:
+                    logger.info("Auto-briefing generated for user %s", user_id)
+                elif is_cached:
+                    logger.debug("Briefing served from cache for user %s (no new news)", user_id)
+
+            # 2. Auto-score pending predictions
+            async with AsyncSessionLocal() as db:
+                pred_svc = PredictionService(db=db)
+                # Score any unscored predictions from last 7 days
+                for days_back in range(1, 8):
+                    check_date = today - timedelta(days=days_back)
+                    try:
+                        result = await pred_svc.compute_confidence_score(user_id, check_date)
+                        if result:
+                            logger.info(
+                                "Auto-scored prediction for user %s, date %s: %.1f%%",
+                                user_id, check_date, result["confidence_score"],
+                            )
+                    except Exception:
+                        pass
+
+        finally:
+            await redis.aclose()
 
     async def _enforce_article_cap(self) -> None:
         """Delete oldest articles if user exceeds the per-user cap."""
