@@ -473,7 +473,14 @@ class NewsCollectionScheduler:
         redis = aioredis.from_url(settings.redis_url, decode_responses=True)
 
         try:
-            # 1. Auto-generate portfolio briefing (stores prediction)
+            # 1. Capture portfolio snapshot from market prices (yfinance, no Groww needed)
+            async with AsyncSessionLocal() as db:
+                snapshot_svc = PortfolioSnapshotService(db=db)
+                captured = await snapshot_svc.capture_snapshot_from_market(user_id=user_id)
+                if captured:
+                    logger.info("Daily market snapshot captured for user %s", user_id)
+
+            # 2. Auto-generate portfolio briefing (stores prediction)
             async with AsyncSessionLocal() as db:
                 llm_service = create_llm_service()
                 aggregator = NewsAggregator()
@@ -489,10 +496,10 @@ class NewsCollectionScheduler:
                 elif is_cached:
                     logger.debug("Briefing served from cache for user %s (no new news)", user_id)
 
-            # 2. Auto-score pending predictions
+            # 3. Auto-score pending predictions (already triggered in snapshot capture above)
+            # Additional pass for any missed ones
             async with AsyncSessionLocal() as db:
                 pred_svc = PredictionService(db=db)
-                # Score any unscored predictions from last 7 days
                 for days_back in range(1, 8):
                     check_date = today - timedelta(days=days_back)
                     try:

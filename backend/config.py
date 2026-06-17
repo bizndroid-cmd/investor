@@ -33,7 +33,7 @@ class Settings(BaseSettings):
 
     # News
     news_poll_interval: int = 1800  # DEPRECATED — kept for backward compat, ignored by new scheduler
-    news_collection_times: str = "08:00,20:00"  # IST, comma-separated HH:MM
+    news_collection_times: str = "09:30,20:00"  # IST, comma-separated HH:MM (9:30 AM after market opens + 8 PM evening)
     news_retention_days: int = 90  # Historical window for pattern analysis
     news_max_articles_per_user: int = 10000  # Safety cap
     newsapi_ai_key: str = ""  # newsapi.ai (Event Registry) API key

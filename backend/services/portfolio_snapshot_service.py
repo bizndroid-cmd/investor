@@ -29,6 +29,150 @@ class PortfolioSnapshotService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
+    async def capture_snapshot_from_market(self, user_id: UUID) -> bool:
+        """Capture a daily snapshot using yfinance market prices.
+
+        Uses tickers from holdings_cache (last known holdings from Groww).
+        Does NOT require a live Groww connection — only needs ticker + quantity + avg_price.
+        
+        Returns True if snapshot was captured successfully.
+        """
+        from zoneinfo import ZoneInfo
+        from backend.models.orm import HoldingCache
+        import asyncio
+
+        IST = ZoneInfo("Asia/Kolkata")
+        today = datetime.now(IST).date()
+
+        # Check if already captured today
+        existing = await self._db.execute(
+            select(PortfolioDailySummary).where(
+                PortfolioDailySummary.user_id == user_id,
+                PortfolioDailySummary.snapshot_date == today,
+            )
+        )
+        if existing.scalar_one_or_none():
+            logger.debug("Snapshot already exists for today, updating prices...")
+            # Delete existing to re-create with fresh prices
+            await self._db.execute(
+                delete(PortfolioSnapshot).where(
+                    PortfolioSnapshot.user_id == user_id,
+                    PortfolioSnapshot.snapshot_date == today,
+                )
+            )
+            await self._db.execute(
+                delete(PortfolioDailySummary).where(
+                    PortfolioDailySummary.user_id == user_id,
+                    PortfolioDailySummary.snapshot_date == today,
+                )
+            )
+
+        # Get holdings from cache
+        stmt = select(HoldingCache).where(HoldingCache.user_id == user_id)
+        result = await self._db.execute(stmt)
+        holdings = result.scalars().all()
+
+        if not holdings:
+            logger.warning("No holdings in cache for user %s, cannot snapshot", user_id)
+            return False
+
+        # Fetch current prices via yfinance
+        tickers = [h.ticker for h in holdings]
+        prices = await self._fetch_yfinance_prices(tickers)
+
+        total_value = Decimal("0")
+        total_invested = Decimal("0")
+
+        for holding in holdings:
+            current_price = prices.get(holding.ticker, Decimal("0"))
+            if current_price <= 0:
+                current_price = holding.avg_buy_price  # fallback
+
+            qty = holding.quantity
+            avg_price = holding.avg_buy_price
+            current_value = qty * current_price
+            gain_loss = current_value - (qty * avg_price)
+            gain_loss_pct = (gain_loss / (qty * avg_price) * 100) if (qty * avg_price) > 0 else Decimal("0")
+
+            total_value += current_value
+            total_invested += qty * avg_price
+
+            snapshot = PortfolioSnapshot(
+                user_id=user_id,
+                snapshot_date=today,
+                ticker=holding.ticker,
+                broker_id=holding.broker_id,
+                quantity=qty,
+                avg_buy_price=avg_price,
+                current_price=current_price,
+                current_value=current_value,
+                gain_loss=gain_loss,
+                gain_loss_percent=gain_loss_pct,
+                currency=holding.currency,
+            )
+            self._db.add(snapshot)
+
+        # Daily summary
+        total_gl = total_value - total_invested
+        total_gl_pct = (total_gl / total_invested * 100) if total_invested > 0 else Decimal("0")
+
+        summary = PortfolioDailySummary(
+            user_id=user_id,
+            snapshot_date=today,
+            total_value=total_value,
+            total_invested=total_invested,
+            total_gain_loss=total_gl,
+            total_gain_loss_percent=total_gl_pct,
+            day_change=Decimal("0"),
+            day_change_percent=Decimal("0"),
+            holdings_count=len(holdings),
+        )
+        self._db.add(summary)
+
+        try:
+            await self._db.commit()
+            logger.info(
+                "Market snapshot captured for user %s: %d tickers, value=%.2f, invested=%.2f",
+                user_id, len(holdings), float(total_value), float(total_invested),
+            )
+
+            # Auto-score pending predictions
+            try:
+                await self._auto_score_predictions(user_id, today)
+            except Exception as e:
+                logger.debug("Auto-score skipped: %s", str(e))
+
+            return True
+        except Exception as e:
+            await self._db.rollback()
+            logger.error("Market snapshot failed: %s", str(e))
+            return False
+
+    async def _fetch_yfinance_prices(self, tickers: list[str]) -> dict[str, Decimal]:
+        """Fetch current prices for multiple tickers via yfinance (NSE)."""
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._yfinance_batch_sync, tickers)
+
+    @staticmethod
+    def _yfinance_batch_sync(tickers: list[str]) -> dict[str, Decimal]:
+        """Synchronous batch yfinance price fetch."""
+        import yfinance
+
+        prices: dict[str, Decimal] = {}
+        for ticker in tickers:
+            try:
+                yf_ticker = f"{ticker}.NS"
+                stock = yfinance.Ticker(yf_ticker)
+                info = stock.fast_info
+                price = getattr(info, "last_price", 0) or 0
+                if price > 0:
+                    prices[ticker] = Decimal(str(round(price, 2)))
+            except Exception:
+                pass
+        return prices
+
     async def capture_snapshot(self, user_id: UUID, portfolio: Portfolio) -> bool:
         """Capture a daily snapshot of the current portfolio state.
 
