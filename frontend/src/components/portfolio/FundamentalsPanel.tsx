@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getFundamentals, refreshFundamentals } from "@/api/portfolio";
 import type { StockFundamental } from "@/api/portfolio";
-import { RefreshCw, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
+import { RefreshCw, Loader2 } from "lucide-react";
 
 export function FundamentalsPanel() {
   const queryClient = useQueryClient();
