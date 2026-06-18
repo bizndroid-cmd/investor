@@ -246,13 +246,21 @@ async def get_fundamentals(
 ) -> list[dict]:
     """Get stock fundamentals for all portfolio tickers."""
     from backend.services.screener_service import ScreenerService
-    from backend.models.orm import HoldingCache
-    from sqlalchemy import select
+    from backend.models.orm import HoldingCache, PortfolioSnapshot
+    from sqlalchemy import select, distinct
 
-    # Get tickers from holdings cache
+    # Try holdings cache first
     stmt = select(HoldingCache.ticker).where(HoldingCache.user_id == session.user_id)
     result = await db.execute(stmt)
     tickers = [r[0] for r in result.all()]
+
+    # Fallback: get tickers from portfolio snapshots
+    if not tickers:
+        stmt = select(distinct(PortfolioSnapshot.ticker)).where(
+            PortfolioSnapshot.user_id == session.user_id
+        )
+        result = await db.execute(stmt)
+        tickers = [r[0] for r in result.all()]
 
     if not tickers:
         return []
@@ -268,12 +276,21 @@ async def refresh_fundamentals(
 ) -> dict:
     """Trigger a refresh of stock fundamentals from screener.in."""
     from backend.services.screener_service import ScreenerService
-    from backend.models.orm import HoldingCache
-    from sqlalchemy import select
+    from backend.models.orm import HoldingCache, PortfolioSnapshot
+    from sqlalchemy import select, distinct
 
+    # Try holdings cache
     stmt = select(HoldingCache.ticker).where(HoldingCache.user_id == session.user_id)
     result = await db.execute(stmt)
     tickers = [r[0] for r in result.all()]
+
+    # Fallback: portfolio snapshots
+    if not tickers:
+        stmt = select(distinct(PortfolioSnapshot.ticker)).where(
+            PortfolioSnapshot.user_id == session.user_id
+        )
+        result = await db.execute(stmt)
+        tickers = [r[0] for r in result.all()]
 
     if not tickers:
         return {"status": "no_tickers", "updated": 0}
