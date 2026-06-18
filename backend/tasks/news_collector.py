@@ -480,6 +480,21 @@ class NewsCollectionScheduler:
                 if captured:
                     logger.info("Daily market snapshot captured for user %s", user_id)
 
+            # 1b. Refresh stock fundamentals weekly (screener.in)
+            try:
+                from backend.services.screener_service import ScreenerService
+                from backend.models.orm import HoldingCache
+                from sqlalchemy import select as sa_select
+                async with AsyncSessionLocal() as db:
+                    stmt = sa_select(HoldingCache.ticker).where(HoldingCache.user_id == user_id)
+                    result = await db.execute(stmt)
+                    tickers = [r[0] for r in result.all()]
+                    if tickers:
+                        screener_svc = ScreenerService(db=db)
+                        await screener_svc.fetch_all_portfolio(tickers)
+            except Exception as e:
+                logger.warning("Fundamentals refresh skipped: %s", str(e))
+
             # 2. Auto-generate portfolio briefing (stores prediction)
             async with AsyncSessionLocal() as db:
                 llm_service = create_llm_service()
