@@ -22,3 +22,23 @@ export async function getHistoricalData(
     `/market/history/${ticker}?range=${range}`
   );
 }
+
+export interface StockFundamental {
+  ticker: string;
+  market_cap?: string;
+  pe_ratio?: string;
+  book_value?: string;
+  dividend_yield?: string;
+  roce?: string;
+  roe?: string;
+  pros?: string;
+  cons?: string;
+}
+
+export async function getFundamentals(): Promise<StockFundamental[]> {
+  return apiFetch<StockFundamental[]>("/portfolio/fundamentals");
+}
+
+export async function refreshFundamentals(): Promise<{ status: string; updated: number }> {
+  return apiFetch("/portfolio/fundamentals/refresh", { method: "POST" });
+}

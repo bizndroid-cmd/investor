@@ -237,3 +237,47 @@ async def refresh_portfolio(
         logger.debug("Snapshot capture after refresh skipped: %s", str(e))
 
     return results
+
+
+@router.get("/fundamentals")
+async def get_fundamentals(
+    session: Session = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Get stock fundamentals for all portfolio tickers."""
+    from backend.services.screener_service import ScreenerService
+    from backend.models.orm import HoldingCache
+    from sqlalchemy import select
+
+    # Get tickers from holdings cache
+    stmt = select(HoldingCache.ticker).where(HoldingCache.user_id == session.user_id)
+    result = await db.execute(stmt)
+    tickers = [r[0] for r in result.all()]
+
+    if not tickers:
+        return []
+
+    svc = ScreenerService(db=db)
+    return await svc.get_all_fundamentals(tickers)
+
+
+@router.post("/fundamentals/refresh")
+async def refresh_fundamentals(
+    session: Session = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Trigger a refresh of stock fundamentals from screener.in."""
+    from backend.services.screener_service import ScreenerService
+    from backend.models.orm import HoldingCache
+    from sqlalchemy import select
+
+    stmt = select(HoldingCache.ticker).where(HoldingCache.user_id == session.user_id)
+    result = await db.execute(stmt)
+    tickers = [r[0] for r in result.all()]
+
+    if not tickers:
+        return {"status": "no_tickers", "updated": 0}
+
+    svc = ScreenerService(db=db)
+    count = await svc.fetch_all_portfolio(tickers)
+    return {"status": "completed", "updated": count, "total": len(tickers)}

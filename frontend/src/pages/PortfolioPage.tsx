@@ -4,6 +4,7 @@ import { PortfolioSummary } from "@/components/portfolio/PortfolioSummary";
 import { HoldingsTable } from "@/components/portfolio/HoldingsTable";
 import { TopPerformers } from "@/components/portfolio/TopPerformers";
 import { DiversificationScore } from "@/components/portfolio/DiversificationScore";
+import { FundamentalsPanel } from "@/components/portfolio/FundamentalsPanel";
 import { AllocationChart } from "@/components/charts/AllocationChart";
 import { PortfolioTrendChart } from "@/components/charts/PortfolioTrendChart";
 import { GainLossChart } from "@/components/charts/GainLossChart";
@@ -108,6 +109,8 @@ export function PortfolioPage() {
       </div>
 
       <HoldingsTable />
+
+      <FundamentalsPanel />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <TopPerformers />
