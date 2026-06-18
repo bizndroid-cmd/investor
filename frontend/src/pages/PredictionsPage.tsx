@@ -1,9 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
-import { getPredictionHistory, getPredictionAverage } from "@/api/predictions";
-import { TrendingUp, TrendingDown, Minus, Trophy, Target, Flame, Brain } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getPredictionHistory, getPredictionAverage, computePredictionScore } from "@/api/predictions";
+import { TrendingUp, TrendingDown, Minus, Trophy, Target, Flame, Brain, RefreshCw, Zap } from "lucide-react";
 
 export function PredictionsPage() {
-  const { data: history } = useQuery({
+  const queryClient = useQueryClient();
+  const { data: history, refetch: refetchHistory } = useQuery({
     queryKey: ["predictions-history"],
     queryFn: () => getPredictionHistory(60),
   });
@@ -13,7 +14,22 @@ export function PredictionsPage() {
     queryFn: () => getPredictionAverage(30),
   });
 
+  const scorePendingMutation = useMutation({
+    mutationFn: async () => {
+      // Score all pending predictions
+      const pending = history?.filter((e) => !e.scored) ?? [];
+      for (const p of pending) {
+        await computePredictionScore(p.prediction_date);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["predictions-history"] });
+      queryClient.invalidateQueries({ queryKey: ["predictions-average"] });
+    },
+  });
+
   const scoredEntries = history?.filter((e) => e.scored) ?? [];
+  const pendingEntries = history?.filter((e) => !e.scored) ?? [];
   const streak = computeStreak(scoredEntries);
   const grade = getGrade(average?.average_score);
 
@@ -24,9 +40,25 @@ export function PredictionsPage() {
           <Brain className="h-6 w-6 text-purple-600" />
           AI Prediction Accuracy
         </h2>
-        <span className="text-xs text-muted-foreground">
-          How well does the AI predict market movements?
-        </span>
+        <div className="flex items-center gap-2">
+          {pendingEntries.length > 0 && (
+            <button
+              onClick={() => scorePendingMutation.mutate()}
+              disabled={scorePendingMutation.isPending}
+              className="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+            >
+              <Zap className="h-3.5 w-3.5" />
+              {scorePendingMutation.isPending ? "Scoring..." : `Score ${pendingEntries.length} Pending`}
+            </button>
+          )}
+          <button
+            onClick={() => refetchHistory()}
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-accent"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Hero Stats Row */}
