@@ -319,8 +319,17 @@ class NewsService(INewsService):
                 "error_message": f"AI briefing paused — cooldown active ({int(remaining)}s remaining).",
             }
 
-        # 8. Generate new briefing via LLM
-        prompt = self._build_briefing_prompt(holdings_data, articles)
+        # 8. Get stock fundamentals for context
+        fundamentals_context = ""
+        try:
+            from backend.services.screener_service import ScreenerService
+            screener_svc = ScreenerService(db=self._db)
+            fundamentals_context = await screener_svc.get_briefing_context(portfolio_tickers)
+        except Exception as e:
+            logger.debug("Fundamentals fetch skipped: %s", str(e))
+
+        # 9. Generate new briefing via LLM
+        prompt = self._build_briefing_prompt(holdings_data, articles, fundamentals_context)
 
         try:
             llm_service = create_llm_service()
@@ -766,7 +775,7 @@ class NewsService(INewsService):
         fallback_tickers = ["RELIANCE", "HDFCBANK", "TCS", "ITC", "ADANIPORTS", "WIPRO"]
         return [{"ticker": t, "quantity": 0, "avg_buy_price": 0, "current_price": None, "gain_loss_percent": None} for t in fallback_tickers]
 
-    def _build_briefing_prompt(self, holdings: list[dict], articles: list) -> str:
+    def _build_briefing_prompt(self, holdings: list[dict], articles: list, fundamentals_context: str = "") -> str:
         """Build the LLM prompt for the daily briefing."""
         # Format holdings table
         holdings_lines = []
@@ -785,9 +794,14 @@ class NewsService(INewsService):
             article_lines.append(f"  {i}. {art.title}\n     {content_preview}")
         articles_text = "\n".join(article_lines) if article_lines else "  (No recent news articles)"
 
+        # Fundamentals section
+        fundamentals_section = ""
+        if fundamentals_context:
+            fundamentals_section = f"\n\n{fundamentals_context}\n"
+
         prompt = f"""Here is the user's watchlist/portfolio:
 {holdings_table}
-
+{fundamentals_section}
 Here are the latest news articles:
 {articles_text}
 
@@ -797,10 +811,14 @@ Create a short daily briefing. For each article, decide if it's relevant to the 
 - Sentiment: positive, negative, or neutral
 - Potential Impact: high, medium, or low
 
+Also consider the stock fundamentals (P/E, ROCE, ROE, pros/cons) when making your assessment.
+Stocks with high P/E and declining ROE in a bearish news environment deserve a "bearish" call.
+Stocks with low P/E, strong ROCE, and positive news deserve a "bullish" call.
+
 End with:
 - A list of tickers with no major news today
 - A one-sentence overall market mood
-- 1-2 actionable suggestions based on the portfolio's current state and today's news"""
+- 1-2 actionable suggestions based on the portfolio's fundamentals, current state, and today's news"""
 
         return prompt
 

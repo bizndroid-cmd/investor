@@ -335,6 +335,32 @@ class PortfolioDailySummary(Base):
     )
 
 
+class StockFundamentals(Base):
+    """Cached stock fundamentals from screener.in."""
+
+    __tablename__ = "stock_fundamentals"
+    __table_args__ = (
+        sa.Index("idx_stock_fundamentals_ticker", "ticker"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    ticker: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    market_cap: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    current_price: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    pe_ratio: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    book_value: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    dividend_yield: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    roce: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    roe: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    face_value: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    high_low: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    pros: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cons: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
+    )
+
+
 class PredictionRecord(Base):
     """Stores LLM predictions from briefings for accuracy tracking."""
 
