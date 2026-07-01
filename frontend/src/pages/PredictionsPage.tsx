@@ -1,6 +1,10 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPredictionHistory, getPredictionAverage, computePredictionScore } from "@/api/predictions";
-import { TrendingUp, TrendingDown, Minus, Trophy, Target, Flame, Brain, RefreshCw, Zap } from "lucide-react";
+import {
+  TrendingUp, TrendingDown, Minus, Trophy, Target, Flame, Brain,
+  RefreshCw, Zap, ChevronDown, ChevronUp, Info, Award, BarChart3,
+} from "lucide-react";
 
 export function PredictionsPage() {
   const queryClient = useQueryClient();
@@ -16,7 +20,6 @@ export function PredictionsPage() {
 
   const scorePendingMutation = useMutation({
     mutationFn: async () => {
-      // Score all pending predictions
       const pending = history?.filter((e) => !e.scored) ?? [];
       for (const p of pending) {
         await computePredictionScore(p.prediction_date);
@@ -32,20 +35,27 @@ export function PredictionsPage() {
   const pendingEntries = history?.filter((e) => !e.scored) ?? [];
   const streak = computeStreak(scoredEntries);
   const grade = getGrade(average?.average_score);
+  const trend = computeTrend(scoredEntries);
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <Brain className="h-6 w-6 text-purple-600" />
-          AI Prediction Accuracy
-        </h2>
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <Brain className="h-6 w-6 text-purple-600" />
+            AI Prediction Accuracy
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Tracking how well the AI reads the market for your portfolio
+          </p>
+        </div>
         <div className="flex items-center gap-2">
           {pendingEntries.length > 0 && (
             <button
               onClick={() => scorePendingMutation.mutate()}
               disabled={scorePendingMutation.isPending}
-              className="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50 transition-all hover:scale-105"
             >
               <Zap className="h-3.5 w-3.5" />
               {scorePendingMutation.isPending ? "Scoring..." : `Score ${pendingEntries.length} Pending`}
@@ -56,214 +66,302 @@ export function PredictionsPage() {
             className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-accent"
           >
             <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
           </button>
         </div>
       </div>
 
-      {/* Hero Stats Row */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <ScoreCard
-          label="Confidence Score"
-          value={average?.average_score != null ? `${average.average_score}%` : "—"}
-          subtitle="30-day average"
-          icon={<Target className="h-5 w-5 text-blue-600" />}
-          color="blue"
-        />
-        <ScoreCard
-          label="AI Grade"
-          value={grade.letter}
-          subtitle={grade.label}
-          icon={<Trophy className="h-5 w-5 text-amber-500" />}
-          color="amber"
-        />
-        <ScoreCard
-          label="Prediction Streak"
-          value={streak > 0 ? `${streak} 🔥` : "—"}
-          subtitle={streak > 0 ? `${streak} days above 60%` : "Build your streak"}
-          icon={<Flame className="h-5 w-5 text-orange-500" />}
-          color="orange"
-        />
-        <ScoreCard
-          label="Total Predictions"
-          value={String(average?.total_predictions ?? 0)}
-          subtitle={`${average?.scored_predictions ?? 0} scored`}
-          icon={<Brain className="h-5 w-5 text-purple-500" />}
-          color="purple"
-        />
-      </div>
+      {/* Hero Score Card */}
+      <div className="rounded-xl border-2 border-purple-200 bg-gradient-to-br from-purple-50 via-white to-blue-50 p-6 shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          {/* Main Score */}
+          <div className="flex flex-col items-center justify-center">
+            <div className="relative">
+              <svg className="w-28 h-28" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="42" fill="none" stroke="#e5e7eb" strokeWidth="8" />
+                <circle
+                  cx="50" cy="50" r="42"
+                  fill="none"
+                  stroke={getScoreColor(average?.average_score)}
+                  strokeWidth="8"
+                  strokeDasharray={`${(average?.average_score ?? 0) * 2.64} 264`}
+                  strokeLinecap="round"
+                  transform="rotate(-90 50 50)"
+                  className="transition-all duration-1000"
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-bold">{average?.average_score ?? "—"}%</span>
+                <span className="text-xs text-muted-foreground">accuracy</span>
+              </div>
+            </div>
+          </div>
 
-      {/* Confidence Explanation */}
-      <div className="rounded-lg border bg-gradient-to-r from-purple-50 to-blue-50 p-4">
-        <h3 className="text-sm font-semibold text-gray-800 mb-2">How does this work?</h3>
-        <p className="text-xs text-gray-600 leading-relaxed">
-          Every time the AI generates a briefing, it predicts the <strong>market mood</strong> (bullish/bearish/neutral) 
-          and <strong>per-ticker direction</strong> (up/down/flat) for each stock in your portfolio. The next trading day, 
-          we compare those predictions against <strong>actual price movements</strong> from your portfolio snapshots.
-        </p>
-        <div className="grid grid-cols-3 gap-2 mt-3 text-center">
-          <div className="rounded-md bg-white/80 p-2">
-            <p className="text-lg font-bold text-green-600">70-100%</p>
-            <p className="text-xs text-gray-500">Strong signal</p>
+          {/* Grade */}
+          <div className="flex flex-col items-center justify-center">
+            <Award className={`h-8 w-8 mb-1 ${grade.color}`} />
+            <span className={`text-3xl font-black ${grade.color}`}>{grade.letter}</span>
+            <span className="text-xs text-muted-foreground mt-1">{grade.label}</span>
           </div>
-          <div className="rounded-md bg-white/80 p-2">
-            <p className="text-lg font-bold text-amber-600">40-69%</p>
-            <p className="text-xs text-gray-500">Mixed results</p>
+
+          {/* Streak */}
+          <div className="flex flex-col items-center justify-center">
+            <Flame className={`h-8 w-8 mb-1 ${streak > 0 ? "text-orange-500" : "text-gray-300"}`} />
+            <span className="text-3xl font-bold">{streak > 0 ? streak : "—"}</span>
+            <span className="text-xs text-muted-foreground mt-1">
+              {streak > 0 ? `day streak (>60%)` : "Build your streak"}
+            </span>
           </div>
-          <div className="rounded-md bg-white/80 p-2">
-            <p className="text-lg font-bold text-red-500">0-39%</p>
-            <p className="text-xs text-gray-500">Unreliable</p>
+
+          {/* Trend */}
+          <div className="flex flex-col items-center justify-center">
+            {trend === "improving" ? (
+              <TrendingUp className="h-8 w-8 mb-1 text-green-500" />
+            ) : trend === "declining" ? (
+              <TrendingDown className="h-8 w-8 mb-1 text-red-500" />
+            ) : (
+              <BarChart3 className="h-8 w-8 mb-1 text-gray-400" />
+            )}
+            <span className="text-sm font-semibold capitalize">{trend}</span>
+            <span className="text-xs text-muted-foreground mt-1">recent trend</span>
           </div>
         </div>
       </div>
 
-      {/* Score History */}
-      <div className="rounded-lg border bg-card p-4">
-        <h3 className="text-sm font-semibold mb-4">Score History</h3>
-        {scoredEntries.length === 0 ? (
-          <div className="text-center py-8">
-            <Brain className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-50" />
-            <p className="text-sm text-muted-foreground">No scored predictions yet.</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Generate a briefing today, and the score will be computed tomorrow once market data is available.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {/* Visual bar chart */}
-            <div className="flex items-end gap-1 h-32 border-b pb-2">
-              {scoredEntries.slice(0, 30).reverse().map((entry, i) => {
-                const score = entry.confidence_score ?? 0;
-                const height = Math.max(4, (score / 100) * 100);
-                const color = score >= 70 ? "bg-green-500" : score >= 40 ? "bg-amber-400" : "bg-red-400";
-                return (
-                  <div
-                    key={i}
-                    className="flex-1 flex flex-col items-center justify-end"
-                    title={`${entry.prediction_date}: ${score}%`}
-                  >
-                    <div
-                      className={`w-full rounded-t ${color} transition-all hover:opacity-80`}
-                      style={{ height: `${height}%` }}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>30 days ago</span>
-              <span>Today</span>
-            </div>
-          </div>
-        )}
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <MiniStat label="Total Predictions" value={String(history?.length ?? 0)} icon="🧠" />
+        <MiniStat label="Scored" value={String(scoredEntries.length)} icon="✅" />
+        <MiniStat label="Best Score" value={average?.highest_score ? `${average.highest_score}%` : "—"} icon="🏆" />
+        <MiniStat label="Worst Score" value={average?.lowest_score ? `${average.lowest_score}%` : "—"} icon="📉" />
       </div>
 
-      {/* Detailed History Table */}
+      {/* How Scoring Works - Collapsible */}
+      <HowItWorks />
+
+      {/* Score Timeline */}
+      {scoredEntries.length > 0 && (
+        <div className="rounded-lg border bg-card p-4">
+          <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-purple-500" />
+            Score Timeline
+          </h3>
+          <div className="flex items-end gap-1.5 h-36 border-b pb-2">
+            {scoredEntries.slice(0, 20).reverse().map((entry, i) => {
+              const score = entry.confidence_score ?? 0;
+              const height = Math.max(8, (score / 100) * 100);
+              const color = score >= 70 ? "bg-green-500" : score >= 50 ? "bg-amber-400" : score >= 30 ? "bg-orange-400" : "bg-red-400";
+              return (
+                <div
+                  key={i}
+                  className="flex-1 flex flex-col items-center justify-end group relative"
+                >
+                  <div className="absolute -top-8 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                    {entry.prediction_date}: {score}%
+                  </div>
+                  <div
+                    className={`w-full rounded-t ${color} transition-all hover:opacity-80 cursor-pointer`}
+                    style={{ height: `${height}%` }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground mt-2">
+            <span>Oldest</span>
+            <span>Latest →</span>
+          </div>
+        </div>
+      )}
+
+      {/* Detailed Predictions List */}
       {history && history.length > 0 && (
-        <div className="rounded-lg border bg-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 border-b">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium">Date</th>
-                <th className="px-4 py-2 text-left font-medium">Mood Predicted</th>
-                <th className="px-4 py-2 text-center font-medium">Score</th>
-                <th className="px-4 py-2 text-center font-medium">Mood Acc.</th>
-                <th className="px-4 py-2 text-center font-medium">Ticker Acc.</th>
-                <th className="px-4 py-2 text-right font-medium">Model</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.slice(0, 15).map((entry) => (
-                <tr key={entry.prediction_date} className="border-b last:border-0 hover:bg-muted/30">
-                  <td className="px-4 py-2 font-mono text-xs">
-                    {new Date(entry.prediction_date).toLocaleDateString([], { month: "short", day: "numeric" })}
-                  </td>
-                  <td className="px-4 py-2">
-                    <MoodBadge mood={entry.market_mood} />
-                  </td>
-                  <td className="px-4 py-2 text-center">
-                    {entry.scored ? (
-                      <ConfidenceBadge score={entry.confidence_score!} />
-                    ) : (
-                      <span className="text-xs text-muted-foreground">Pending</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-center text-xs font-mono">
-                    {entry.mood_accuracy != null ? `${entry.mood_accuracy}%` : "—"}
-                  </td>
-                  <td className="px-4 py-2 text-center text-xs font-mono">
-                    {entry.ticker_accuracy != null ? `${entry.ticker_accuracy}%` : "—"}
-                  </td>
-                  <td className="px-4 py-2 text-right text-xs text-muted-foreground font-mono">
-                    {entry.model}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="rounded-lg border bg-card">
+          <div className="p-4 border-b">
+            <h3 className="text-sm font-semibold">Prediction Log</h3>
+          </div>
+          <div className="divide-y">
+            {history.map((entry) => (
+              <PredictionRow key={entry.prediction_date} entry={entry} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {(!history || history.length === 0) && (
+        <div className="rounded-lg border bg-card p-12 text-center">
+          <Brain className="h-12 w-12 text-purple-300 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No predictions yet</h3>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Generate a portfolio briefing from the News page. Each briefing creates a prediction 
+            that gets scored the next trading day when market data comes in.
+          </p>
         </div>
       )}
     </div>
   );
 }
 
-function ScoreCard({
-  label,
-  value,
-  subtitle,
-  icon,
-}: {
-  label: string;
-  value: string;
-  subtitle: string;
-  icon: React.ReactNode;
-  color?: string;
-}) {
+function MiniStat({ label, value, icon }: { label: string; value: string; icon: string }) {
   return (
-    <div className="rounded-lg border bg-card p-4">
-      <div className="flex items-center gap-2 mb-2">
-        {icon}
-        <span className="text-xs text-muted-foreground">{label}</span>
+    <div className="rounded-lg border bg-card p-3 text-center">
+      <span className="text-lg">{icon}</span>
+      <p className="text-xl font-bold mt-1">{value}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
+    </div>
+  );
+}
+
+function PredictionRow({ entry }: { entry: any }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="px-4 py-3 hover:bg-muted/30 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-mono text-muted-foreground w-16">
+            {new Date(entry.prediction_date).toLocaleDateString([], { month: "short", day: "numeric" })}
+          </span>
+          <MoodBadge mood={entry.market_mood} />
+        </div>
+        <div className="flex items-center gap-3">
+          {entry.scored ? (
+            <div className="flex items-center gap-2">
+              <ScoreRing score={entry.confidence_score} size={32} />
+              <div className="text-right">
+                <p className="text-sm font-bold">{entry.confidence_score}%</p>
+                <p className="text-xs text-muted-foreground">
+                  M:{entry.mood_accuracy}% · T:{entry.ticker_accuracy}%
+                </p>
+              </div>
+            </div>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-full">
+              <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
+              Pending
+            </span>
+          )}
+          {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </div>
       </div>
-      <p className="text-2xl font-bold">{value}</p>
-      <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+      {expanded && (
+        <div className="mt-3 pl-20 text-xs text-muted-foreground space-y-1 border-t pt-2">
+          <p><strong>Model:</strong> {entry.provider}/{entry.model}</p>
+          {entry.scored && (
+            <>
+              <p><strong>Mood Accuracy:</strong> {entry.mood_accuracy}% — AI predicted "{entry.market_mood}", portfolio {entry.mood_accuracy === 100 ? "moved in that direction ✓" : entry.mood_accuracy === 50 ? "was flat (partial credit)" : "moved opposite ✗"}</p>
+              <p><strong>Ticker Accuracy:</strong> {entry.ticker_accuracy}% — per-stock direction predictions vs actual price changes</p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ScoreRing({ score, size = 32 }: { score: number; size?: number }) {
+  const r = (size - 6) / 2;
+  const circumference = 2 * Math.PI * r;
+  const offset = circumference - (score / 100) * circumference;
+
+  return (
+    <svg width={size} height={size} className="shrink-0">
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#e5e7eb" strokeWidth="3" />
+      <circle
+        cx={size/2} cy={size/2} r={r}
+        fill="none"
+        stroke={getScoreColor(score)}
+        strokeWidth="3"
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${size/2} ${size/2})`}
+      />
+    </svg>
+  );
+}
+
+function HowItWorks() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rounded-lg border bg-card">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between p-4 text-left hover:bg-muted/30"
+      >
+        <div className="flex items-center gap-2">
+          <Info className="h-4 w-4 text-blue-500" />
+          <span className="text-sm font-medium">How does scoring work?</span>
+        </div>
+        {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 text-xs text-muted-foreground space-y-3 border-t pt-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <p className="font-semibold text-foreground">📊 Mood Accuracy (40% weight)</p>
+              <p>Did the AI correctly predict whether your portfolio would go UP (bullish), DOWN (bearish), or stay FLAT (neutral)?</p>
+              <ul className="list-disc list-inside space-y-1">
+                <li>Correct direction → 100 points</li>
+                <li>Predicted neutral OR actual was flat → 50 points</li>
+                <li>Completely wrong direction → 0 points</li>
+              </ul>
+            </div>
+            <div className="space-y-2">
+              <p className="font-semibold text-foreground">📈 Ticker Accuracy (60% weight)</p>
+              <p>For each stock, did the AI correctly predict UP/DOWN/FLAT?</p>
+              <ul className="list-disc list-inside space-y-1">
+                <li>Correct direction → full credit</li>
+                <li>One side is neutral → half credit</li>
+                <li>Wrong direction → no credit</li>
+                <li>Score = (correct / total tickers) × 100</li>
+              </ul>
+            </div>
+          </div>
+          <div className="mt-3 p-3 bg-purple-50 rounded-md">
+            <p className="font-semibold text-purple-800">Formula:</p>
+            <p className="font-mono text-purple-700 mt-1">Confidence = (Mood × 40%) + (Ticker × 60%)</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function MoodBadge({ mood }: { mood: string }) {
   const config = {
-    bullish: { icon: <TrendingUp className="h-3 w-3" />, bg: "bg-green-100 text-green-700" },
-    bearish: { icon: <TrendingDown className="h-3 w-3" />, bg: "bg-red-100 text-red-700" },
-    neutral: { icon: <Minus className="h-3 w-3" />, bg: "bg-gray-100 text-gray-700" },
-  }[mood] || { icon: <Minus className="h-3 w-3" />, bg: "bg-gray-100 text-gray-700" };
+    bullish: { icon: <TrendingUp className="h-3 w-3" />, bg: "bg-green-100 text-green-700 border-green-200" },
+    bearish: { icon: <TrendingDown className="h-3 w-3" />, bg: "bg-red-100 text-red-700 border-red-200" },
+    neutral: { icon: <Minus className="h-3 w-3" />, bg: "bg-gray-100 text-gray-700 border-gray-200" },
+  }[mood] || { icon: <Minus className="h-3 w-3" />, bg: "bg-gray-100 text-gray-700 border-gray-200" };
 
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${config.bg}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${config.bg}`}>
       {config.icon}
       {mood}
     </span>
   );
 }
 
-function ConfidenceBadge({ score }: { score: number }) {
-  const color = score >= 70 ? "text-green-700 bg-green-100" : score >= 40 ? "text-amber-700 bg-amber-100" : "text-red-700 bg-red-100";
-  return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-bold ${color}`}>
-      {score}%
-    </span>
-  );
+// Helpers
+function getScoreColor(score: number | null | undefined): string {
+  if (score == null) return "#d1d5db";
+  if (score >= 70) return "#22c55e";
+  if (score >= 50) return "#f59e0b";
+  if (score >= 30) return "#f97316";
+  return "#ef4444";
 }
 
-function getGrade(score: number | null | undefined): { letter: string; label: string } {
-  if (score == null) return { letter: "—", label: "Not enough data" };
-  if (score >= 85) return { letter: "A+", label: "Exceptional" };
-  if (score >= 75) return { letter: "A", label: "Excellent" };
-  if (score >= 65) return { letter: "B+", label: "Good" };
-  if (score >= 55) return { letter: "B", label: "Above Average" };
-  if (score >= 45) return { letter: "C", label: "Average" };
-  if (score >= 35) return { letter: "D", label: "Below Average" };
-  return { letter: "F", label: "Unreliable" };
+function getGrade(score: number | null | undefined): { letter: string; label: string; color: string } {
+  if (score == null) return { letter: "—", label: "Not enough data", color: "text-gray-400" };
+  if (score >= 85) return { letter: "A+", label: "Exceptional", color: "text-green-600" };
+  if (score >= 75) return { letter: "A", label: "Excellent", color: "text-green-600" };
+  if (score >= 65) return { letter: "B+", label: "Good", color: "text-blue-600" };
+  if (score >= 55) return { letter: "B", label: "Above Average", color: "text-blue-600" };
+  if (score >= 45) return { letter: "C", label: "Average", color: "text-amber-600" };
+  if (score >= 35) return { letter: "D", label: "Below Average", color: "text-orange-600" };
+  return { letter: "F", label: "Unreliable", color: "text-red-600" };
 }
 
 function computeStreak(entries: { confidence_score: number | null }[]): number {
@@ -276,4 +374,18 @@ function computeStreak(entries: { confidence_score: number | null }[]): number {
     }
   }
   return streak;
+}
+
+function computeTrend(entries: { confidence_score: number | null }[]): string {
+  const recent = entries.slice(0, 3).filter(e => e.confidence_score != null);
+  const older = entries.slice(3, 6).filter(e => e.confidence_score != null);
+
+  if (recent.length < 2 || older.length < 1) return "building";
+
+  const recentAvg = recent.reduce((s, e) => s + (e.confidence_score ?? 0), 0) / recent.length;
+  const olderAvg = older.reduce((s, e) => s + (e.confidence_score ?? 0), 0) / older.length;
+
+  if (recentAvg > olderAvg + 5) return "improving";
+  if (recentAvg < olderAvg - 5) return "declining";
+  return "stable";
 }
