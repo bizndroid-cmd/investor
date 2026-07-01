@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPredictionHistory, getPredictionAverage, computePredictionScore } from "@/api/predictions";
 import {
-  TrendingUp, TrendingDown, Minus, Trophy, Target, Flame, Brain,
+  TrendingUp, TrendingDown, Minus, Flame, Brain,
   RefreshCw, Zap, ChevronDown, ChevronUp, Info, Award, BarChart3,
 } from "lucide-react";
 
