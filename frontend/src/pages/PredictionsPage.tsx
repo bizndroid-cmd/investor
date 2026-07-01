@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPredictionHistory, getPredictionAverage, computePredictionScore } from "@/api/predictions";
+import {
+  getPredictionHistory, getPredictionAverage, computePredictionScore,
+  getTodayPrediction, getPortfolioImpact, getMoodCalendar,
+} from "@/api/predictions";
+import type { TodayPrediction, PortfolioImpact, CalendarEntry } from "@/api/predictions";
 import {
   TrendingUp, TrendingDown, Minus, Flame, Brain,
   RefreshCw, Zap, ChevronDown, ChevronUp, Info, Award, BarChart3,
@@ -16,6 +20,21 @@ export function PredictionsPage() {
   const { data: average } = useQuery({
     queryKey: ["predictions-average"],
     queryFn: () => getPredictionAverage(30),
+  });
+
+  const { data: todayPred } = useQuery({
+    queryKey: ["predictions-today"],
+    queryFn: getTodayPrediction,
+  });
+
+  const { data: impact } = useQuery({
+    queryKey: ["predictions-impact"],
+    queryFn: getPortfolioImpact,
+  });
+
+  const { data: calendar } = useQuery({
+    queryKey: ["predictions-calendar"],
+    queryFn: () => getMoodCalendar(30),
   });
 
   const scorePendingMutation = useMutation({
@@ -134,6 +153,123 @@ export function PredictionsPage() {
         <MiniStat label="Best Score" value={average?.highest_score ? `${average.highest_score}%` : "—"} icon="🏆" />
         <MiniStat label="Worst Score" value={average?.lowest_score ? `${average.lowest_score}%` : "—"} icon="📉" />
       </div>
+
+      {/* TODAY'S PREDICTION - Hero Card */}
+      {todayPred?.has_prediction && (
+        <div className="rounded-xl border-2 border-indigo-200 bg-gradient-to-r from-indigo-50 to-purple-50 p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold text-indigo-800 flex items-center gap-2">
+              🔮 Today's AI Prediction
+              <span className="text-xs font-normal text-indigo-500">({todayPred.prediction_date})</span>
+            </h3>
+            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+              {todayPred.provider}/{todayPred.model}
+            </span>
+          </div>
+          
+          <div className="flex items-center gap-4 mb-3">
+            <div className={`text-3xl font-black ${todayPred.market_mood === "bullish" ? "text-green-600" : todayPred.market_mood === "bearish" ? "text-red-600" : "text-gray-600"}`}>
+              {todayPred.market_mood === "bullish" ? "📈 BULLISH" : todayPred.market_mood === "bearish" ? "📉 BEARISH" : "➡️ NEUTRAL"}
+            </div>
+          </div>
+          
+          {todayPred.market_mood_reason && (
+            <p className="text-sm text-indigo-700 mb-3 italic">"{todayPred.market_mood_reason}"</p>
+          )}
+
+          {/* Ticker predictions */}
+          {todayPred.ticker_predictions && todayPred.ticker_predictions.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-indigo-200">
+              <p className="text-xs font-semibold text-indigo-600 mb-2">Per-Stock Predictions:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {todayPred.ticker_predictions.filter(t => t.expected_direction !== "flat").slice(0, 12).map((t) => (
+                  <span
+                    key={t.ticker}
+                    className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
+                      t.expected_direction === "up" ? "bg-green-100 text-green-700" :
+                      t.expected_direction === "down" ? "bg-red-100 text-red-700" :
+                      "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {t.expected_direction === "up" ? "↑" : t.expected_direction === "down" ? "↓" : "→"}
+                    {t.ticker}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* PORTFOLIO IMPACT CALCULATOR */}
+      {impact?.has_data && (
+        <div className="rounded-xl border bg-card p-5">
+          <h3 className="text-sm font-bold mb-4 flex items-center gap-2">
+            💰 AI Impact Calculator
+            <span className="text-xs font-normal text-muted-foreground">Last {impact.period_days} days</span>
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="text-center p-3 rounded-lg bg-blue-50 border border-blue-200">
+              <p className="text-xs text-blue-600 mb-1">Actual Portfolio Change</p>
+              <p className={`text-xl font-bold ${(impact.actual_change ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {(impact.actual_change ?? 0) >= 0 ? "+" : ""}₹{Math.abs(impact.actual_change ?? 0).toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground">{(impact.actual_change_pct ?? 0) >= 0 ? "+" : ""}{impact.actual_change_pct}%</p>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-purple-50 border border-purple-200">
+              <p className="text-xs text-purple-600 mb-1">If You Followed AI</p>
+              <p className={`text-xl font-bold ${(impact.hypothetical_change ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {(impact.hypothetical_change ?? 0) >= 0 ? "+" : ""}₹{Math.abs(impact.hypothetical_change ?? 0).toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground">{(impact.hypothetical_change_pct ?? 0) >= 0 ? "+" : ""}{impact.hypothetical_change_pct}%</p>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+              <p className="text-xs text-emerald-600 mb-1">AI Edge</p>
+              <p className={`text-xl font-bold ${(impact.ai_edge ?? 0) >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                {(impact.ai_edge ?? 0) >= 0 ? "+" : ""}₹{Math.abs(impact.ai_edge ?? 0).toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {impact.correct_calls}/{impact.total_calls} correct calls ({impact.accuracy_rate}%)
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MOOD CALENDAR HEATMAP */}
+      {calendar && calendar.length > 0 && (
+        <div className="rounded-xl border bg-card p-5">
+          <h3 className="text-sm font-bold mb-4 flex items-center gap-2">
+            📅 Mood Calendar
+            <span className="text-xs font-normal text-muted-foreground">Last 30 days</span>
+          </h3>
+          <div className="grid grid-cols-7 gap-1.5">
+            {["M","T","W","T","F","S","S"].map((d, i) => (
+              <div key={i} className="text-center text-xs text-muted-foreground font-medium">{d}</div>
+            ))}
+            {generateCalendarGrid(calendar).map((cell, i) => (
+              <div
+                key={i}
+                className={`aspect-square rounded-md flex items-center justify-center text-xs font-bold cursor-default transition-transform hover:scale-110 ${
+                  cell === null ? "bg-transparent" :
+                  cell.mood === "bullish" ? (cell.scored ? "bg-green-400 text-white" : "bg-green-200 text-green-700") :
+                  cell.mood === "bearish" ? (cell.scored ? "bg-red-400 text-white" : "bg-red-200 text-red-700") :
+                  cell.scored ? "bg-gray-300 text-white" : "bg-gray-100 text-gray-500"
+                }`}
+                title={cell ? `${cell.date}: ${cell.mood}${cell.score ? ` (${cell.score}%)` : " (pending)"}` : ""}
+              >
+                {cell?.score ? `${cell.score}` : cell ? (cell.mood === "bullish" ? "↑" : cell.mood === "bearish" ? "↓" : "→") : ""}
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-400 rounded" /> Bullish</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 bg-red-400 rounded" /> Bearish</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 bg-gray-300 rounded" /> Neutral</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-200 rounded" /> Pending</span>
+          </div>
+        </div>
+      )}
 
       {/* How Scoring Works - Collapsible */}
       <HowItWorks />
@@ -388,4 +524,38 @@ function computeTrend(entries: { confidence_score: number | null }[]): string {
   if (recentAvg > olderAvg + 5) return "improving";
   if (recentAvg < olderAvg - 5) return "declining";
   return "stable";
+}
+
+function generateCalendarGrid(calendar: CalendarEntry[]): (CalendarEntry | null)[] {
+  if (!calendar.length) return [];
+
+  // Build a 5-week grid (35 cells)
+  const grid: (CalendarEntry | null)[] = [];
+  const today = new Date();
+  const startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - 34); // 5 weeks back
+
+  // Align to Monday
+  const dayOfWeek = startDate.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  startDate.setDate(startDate.getDate() + mondayOffset);
+
+  const calendarMap = new Map(calendar.map(c => [c.date, c]));
+
+  for (let i = 0; i < 35; i++) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + i);
+    const dateStr = d.toISOString().split("T")[0];
+    const entry = calendarMap.get(dateStr);
+
+    if (d > today) {
+      grid.push(null);
+    } else if (entry) {
+      grid.push(entry);
+    } else {
+      grid.push(null);
+    }
+  }
+
+  return grid;
 }
