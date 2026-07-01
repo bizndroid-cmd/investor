@@ -88,19 +88,25 @@ class PredictionService:
         if not prediction:
             return None
 
-        # Get snapshot for the prediction day and the next trading day
-        next_day = prediction_date + timedelta(days=1)
-        # Check up to 3 days forward (skip weekends)
+        # Get snapshot for the prediction day and the next available trading day
         snapshot_today = await self._get_snapshot(user_id, prediction_date)
         snapshot_next = None
-        for days_ahead in range(1, 4):
+
+        # If no snapshot for prediction date, find the nearest one before it
+        if not snapshot_today:
+            snapshot_today = await self._get_nearest_snapshot(user_id, prediction_date, direction="before")
+
+        # Find next available snapshot after prediction date (up to 30 days forward)
+        for days_ahead in range(1, 31):
             check_date = prediction_date + timedelta(days=days_ahead)
             snapshot_next = await self._get_snapshot(user_id, check_date)
-            if snapshot_next:
+            if snapshot_next and snapshot_next.total_value > 0:
                 break
 
         if not snapshot_today or not snapshot_next:
             return None  # Not enough data yet
+        if snapshot_today.total_value <= 0 or snapshot_next.total_value <= 0:
+            return None  # Empty snapshots
 
         # Compute mood accuracy (40% weight)
         mood_score = self._compute_mood_accuracy(
@@ -231,6 +237,35 @@ class PredictionService:
             PortfolioDailySummary.user_id == user_id,
             PortfolioDailySummary.snapshot_date == snapshot_date,
         )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def _get_nearest_snapshot(self, user_id: UUID, target_date: date, direction: str = "before"):
+        """Get the nearest snapshot before or after a target date."""
+        from sqlalchemy import desc as sa_desc, asc as sa_asc
+
+        if direction == "before":
+            stmt = (
+                select(PortfolioDailySummary)
+                .where(
+                    PortfolioDailySummary.user_id == user_id,
+                    PortfolioDailySummary.snapshot_date <= target_date,
+                    PortfolioDailySummary.total_value > 0,
+                )
+                .order_by(sa_desc(PortfolioDailySummary.snapshot_date))
+                .limit(1)
+            )
+        else:
+            stmt = (
+                select(PortfolioDailySummary)
+                .where(
+                    PortfolioDailySummary.user_id == user_id,
+                    PortfolioDailySummary.snapshot_date >= target_date,
+                    PortfolioDailySummary.total_value > 0,
+                )
+                .order_by(sa_asc(PortfolioDailySummary.snapshot_date))
+                .limit(1)
+            )
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
 
