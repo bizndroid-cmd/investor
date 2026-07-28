@@ -233,6 +233,34 @@ export function PredictionsPage() {
               </p>
             </div>
           </div>
+
+          {/* What AI actually suggested */}
+          {todayPred?.has_prediction && todayPred.ticker_predictions && todayPred.ticker_predictions.length > 0 && (
+            <div className="mt-4 pt-4 border-t">
+              <p className="text-xs font-semibold text-muted-foreground mb-2">📋 What the AI suggested (latest):</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {todayPred.ticker_predictions
+                  .filter(t => t.expected_direction !== "flat")
+                  .slice(0, 8)
+                  .map((t) => (
+                    <div
+                      key={t.ticker}
+                      className={`text-xs p-2 rounded-md border ${
+                        t.expected_direction === "up"
+                          ? "bg-green-50 border-green-200 text-green-700"
+                          : "bg-red-50 border-red-200 text-red-700"
+                      }`}
+                    >
+                      <span className="font-bold">{t.expected_direction === "up" ? "↑" : "↓"} {t.ticker}</span>
+                      <p className="text-xs opacity-75 mt-0.5 truncate">{t.reason}</p>
+                    </div>
+                  ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2 italic">
+                These are the AI's directional calls. Correct calls amplify the hypothetical returns above.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
