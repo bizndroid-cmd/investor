@@ -4,7 +4,7 @@ import {
   getPredictionHistory, getPredictionAverage, computePredictionScore,
   getTodayPrediction, getPortfolioImpact, getMoodCalendar,
 } from "@/api/predictions";
-import type { TodayPrediction, PortfolioImpact, CalendarEntry } from "@/api/predictions";
+import type { CalendarEntry } from "@/api/predictions";
 import {
   TrendingUp, TrendingDown, Minus, Flame, Brain,
   RefreshCw, Zap, ChevronDown, ChevronUp, Info, Award, BarChart3,
