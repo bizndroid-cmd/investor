@@ -297,7 +297,7 @@ function PersonaAnalysis() {
 // HELPERS
 // ============================================================
 
-function SectionSkeleton({ title }: { title: string }) {
+function SectionSkeleton({}: { title: string }) {
   return (
     <div className="rounded-xl border bg-card p-5 animate-pulse">
       <div className="h-5 w-40 bg-muted rounded mb-4" />
