@@ -10,6 +10,7 @@ import {
   X,
   Terminal,
   Brain,
+  Lightbulb,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -21,6 +22,7 @@ const navItems = [
   { to: "/comparison", label: "Comparison", icon: GitCompare },
   { to: "/news", label: "News", icon: Newspaper },
   { to: "/predictions", label: "AI Predictions", icon: Brain },
+  { to: "/insights", label: "Smart Insights", icon: Lightbulb },
   { to: "/nerd-stats", label: "Nerd Stats", icon: Terminal },
 ];
 
