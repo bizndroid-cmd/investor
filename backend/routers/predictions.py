@@ -67,3 +67,28 @@ async def compute_score(
         }
 
     return {"status": "computed", **result}
+
+
+@router.get("/risks")
+async def get_portfolio_risks(
+    session: Session = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Get portfolio concentration risks and pattern alerts."""
+    from backend.services.intelligence_service import IntelligenceService
+
+    svc = IntelligenceService(db=db)
+    return await svc.detect_sector_concentration(user_id=session.user_id)
+
+
+@router.get("/patterns/{ticker}")
+async def get_ticker_patterns(
+    ticker: str,
+    session: Session = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Get historical price patterns for a specific ticker."""
+    from backend.services.intelligence_service import IntelligenceService
+
+    svc = IntelligenceService(db=db)
+    return await svc.detect_price_patterns(user_id=session.user_id, ticker=ticker.upper())

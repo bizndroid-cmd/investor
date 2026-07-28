@@ -328,8 +328,18 @@ class NewsService(INewsService):
         except Exception as e:
             logger.debug("Fundamentals fetch skipped: %s", str(e))
 
+        # 8b. Get intelligence context (patterns, risk, accuracy feedback)
+        intelligence_context = ""
+        try:
+            from backend.services.intelligence_service import IntelligenceService
+            intel_svc = IntelligenceService(db=self._db)
+            analysis = await intel_svc.get_full_analysis_context(user_id, portfolio_tickers)
+            intelligence_context = intel_svc.format_for_prompt(analysis)
+        except Exception as e:
+            logger.debug("Intelligence context skipped: %s", str(e))
+
         # 9. Generate new briefing via LLM
-        prompt = self._build_briefing_prompt(holdings_data, articles, fundamentals_context)
+        prompt = self._build_briefing_prompt(holdings_data, articles, fundamentals_context, intelligence_context)
 
         try:
             llm_service = create_llm_service()
@@ -775,7 +785,7 @@ class NewsService(INewsService):
         fallback_tickers = ["RELIANCE", "HDFCBANK", "TCS", "ITC", "ADANIPORTS", "WIPRO"]
         return [{"ticker": t, "quantity": 0, "avg_buy_price": 0, "current_price": None, "gain_loss_percent": None} for t in fallback_tickers]
 
-    def _build_briefing_prompt(self, holdings: list[dict], articles: list, fundamentals_context: str = "") -> str:
+    def _build_briefing_prompt(self, holdings: list[dict], articles: list, fundamentals_context: str = "", intelligence_context: str = "") -> str:
         """Build the LLM prompt for the daily briefing."""
         # Format holdings table
         holdings_lines = []
@@ -799,9 +809,14 @@ class NewsService(INewsService):
         if fundamentals_context:
             fundamentals_section = f"\n\n{fundamentals_context}\n"
 
+        # Intelligence section (patterns, risks, accuracy feedback)
+        intelligence_section = ""
+        if intelligence_context:
+            intelligence_section = f"\n\n{intelligence_context}\n"
+
         prompt = f"""Here is the user's watchlist/portfolio:
 {holdings_table}
-{fundamentals_section}
+{fundamentals_section}{intelligence_section}
 Here are the latest news articles:
 {articles_text}
 
