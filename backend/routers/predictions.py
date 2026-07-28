@@ -92,3 +92,45 @@ async def get_ticker_patterns(
 
     svc = IntelligenceService(db=db)
     return await svc.detect_price_patterns(user_id=session.user_id, ticker=ticker.upper())
+
+
+@router.get("/today")
+async def get_today_prediction(
+    session: Session = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Get today's (latest) prediction with full details."""
+    from backend.models.orm import PredictionRecord
+    from sqlalchemy import select, desc
+    import json
+
+    stmt = (
+        select(PredictionRecord)
+        .where(PredictionRecord.user_id == session.user_id)
+        .order_by(desc(PredictionRecord.prediction_date))
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    record = result.scalar_one_or_none()
+
+    if not record:
+        return {"has_prediction": False}
+
+    ticker_preds = []
+    if record.ticker_predictions:
+        try:
+            ticker_preds = json.loads(record.ticker_predictions)
+        except Exception:
+            pass
+
+    return {
+        "has_prediction": True,
+        "prediction_date": record.prediction_date.isoformat(),
+        "market_mood": record.market_mood,
+        "market_mood_reason": record.market_mood_reason,
+        "ticker_predictions": ticker_preds,
+        "confidence_score": record.confidence_score,
+        "scored": record.confidence_score is not None,
+        "provider": record.provider,
+        "model": record.model,
+    }
