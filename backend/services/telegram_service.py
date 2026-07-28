@@ -89,41 +89,86 @@ async def broadcast_to_all(text: str) -> int:
 
 async def send_daily_briefing(briefing_text: str, prediction_mood: str, prediction_date: str) -> int:
     """Send the daily portfolio briefing to all authorized users."""
-    mood_emoji = {"bullish": "📈", "bearish": "📉", "neutral": "➡️"}.get(prediction_mood, "🔮")
+    mood_config = {
+        "bullish": {"emoji": "🟢📈", "vibe": "Looking good!"},
+        "bearish": {"emoji": "🔴📉", "vibe": "Stay cautious."},
+        "neutral": {"emoji": "🟡➡️", "vibe": "Wait and watch."},
+    }
+    config = mood_config.get(prediction_mood, mood_config["neutral"])
+
+    # Extract key insights (first 3 bullet points from briefing)
+    key_points = []
+    for line in briefing_text.split("\n"):
+        line = line.strip()
+        if line.startswith("*") or line.startswith("-") or line.startswith("•"):
+            clean = line.lstrip("*-• ").strip()
+            if len(clean) > 20:
+                key_points.append(clean[:120])
+            if len(key_points) >= 3:
+                break
+
+    insights = "\n".join(f"  → {p}" for p in key_points) if key_points else "  Open app for full analysis"
 
     message = (
-        f"<b>{mood_emoji} Daily Portfolio Briefing</b>\n"
-        f"<i>{prediction_date}</i>\n\n"
-        f"<b>Market Mood: {prediction_mood.upper()}</b>\n\n"
-        f"{_truncate_html(briefing_text, 3500)}\n\n"
-        f"<i>— Investor AI ({datetime.now(timezone.utc).strftime('%H:%M UTC')})</i>"
+        f"{config['emoji']} <b>Market Pulse — {prediction_date}</b>\n\n"
+        f"<b>AI Mood: {prediction_mood.upper()}</b> — {config['vibe']}\n\n"
+        f"<b>Key Takeaways:</b>\n{insights}\n\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"💡 <i>Full briefing + stock-by-stock calls available in app</i>\n"
+        f"🎯 <i>Your AI accuracy: tracking live</i>"
     )
     return await broadcast_to_all(message)
 
 
 async def send_prediction_score(prediction_date: str, score: float, mood_accuracy: float, ticker_accuracy: float) -> int:
-    """Notify users when a prediction gets scored."""
+    """Notify users when a prediction gets scored — make it feel like a game."""
     grade = _get_grade(score)
 
+    # Gamification messages
+    if score >= 75:
+        reaction = "🔥 Crushing it! The AI nailed this one."
+        tip = "High conviction signals are working — trust them more."
+    elif score >= 60:
+        reaction = "👍 Solid read. Above average performance."
+        tip = "The directional call was right. Refine ticker-level precision next."
+    elif score >= 45:
+        reaction = "🤔 Mixed bag. Some hits, some misses."
+        tip = "The AI hedged too much. Look for stronger signals."
+    else:
+        reaction = "📚 Learning opportunity. The market surprised us."
+        tip = "Contrarian day — the AI is adjusting for next time."
+
     message = (
-        f"<b>🎯 Prediction Scored!</b>\n\n"
-        f"📅 Date: {prediction_date}\n"
-        f"📊 Score: <b>{score}%</b> (Grade: {grade})\n"
-        f"  • Mood Accuracy: {mood_accuracy}%\n"
-        f"  • Ticker Accuracy: {ticker_accuracy}%\n\n"
-        f"{'🟢 Good call!' if score >= 60 else '🔴 Room for improvement' if score < 40 else '🟡 Mixed results'}"
+        f"🎯 <b>Prediction Scorecard</b>\n\n"
+        f"📅 {prediction_date}\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"📊 <b>Score: {score:.0f}%</b>  •  Grade: <b>{grade}</b>\n\n"
+        f"  🧭 Market direction: {mood_accuracy:.0f}%\n"
+        f"  📈 Stock-level calls: {ticker_accuracy:.0f}%\n\n"
+        f"{reaction}\n\n"
+        f"💡 <i>{tip}</i>"
     )
     return await broadcast_to_all(message)
 
 
 async def send_portfolio_alert(change_pct: float, total_value: float) -> int:
     """Alert on significant portfolio movement (>2%)."""
-    direction = "📈 UP" if change_pct > 0 else "📉 DOWN"
+    if change_pct > 0:
+        direction = "🚀 Rally Mode"
+        emoji = "💰"
+        action = "Consider booking partial profits on high-conviction winners"
+    else:
+        direction = "⚠️ Pullback Alert"
+        emoji = "🛡️"
+        action = "Review stop-losses. Don't panic sell quality holdings"
+
     message = (
-        f"<b>⚡ Portfolio Alert</b>\n\n"
-        f"{direction} <b>{abs(change_pct):.1f}%</b>\n"
-        f"Current Value: ₹{total_value:,.0f}\n\n"
-        f"<i>Significant movement detected</i>"
+        f"{emoji} <b>{direction}</b>\n\n"
+        f"Your portfolio moved <b>{abs(change_pct):.1f}%</b> {'up' if change_pct > 0 else 'down'}\n"
+        f"Current value: <b>₹{total_value:,.0f}</b>\n\n"
+        f"💡 <i>{action}</i>\n\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"<i>Open app for detailed stock-by-stock analysis</i>"
     )
     return await broadcast_to_all(message)
 
