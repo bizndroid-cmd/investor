@@ -78,3 +78,46 @@ async def get_llm_status():
     """
     service = get_telemetry_service()
     return service.get_llm_status()
+
+
+@router.get("/telegram-setup")
+async def telegram_setup(pin: str = Query(..., description="Access PIN")):
+    """Get Telegram bot info and recent chat IDs (for initial setup).
+    
+    Steps:
+    1. Message your bot on Telegram
+    2. Call this endpoint to see your chat_id
+    3. Add it to TELEGRAM_ALLOWED_CHAT_IDS in .env
+    """
+    if pin != TELEMETRY_PIN:
+        raise HTTPException(status_code=403, detail="Invalid PIN")
+
+    from backend.services import telegram_service
+
+    if not telegram_service.is_configured():
+        return {"error": "TELEGRAM_BOT_TOKEN not set in .env"}
+
+    chats = await telegram_service.get_bot_updates()
+    return {
+        "configured": True,
+        "recent_chats": chats,
+        "instructions": "Add your chat_id to TELEGRAM_ALLOWED_CHAT_IDS in .env (comma-separated for multiple users)",
+    }
+
+
+@router.post("/telegram-test")
+async def telegram_test(pin: str = Query(..., description="Access PIN")):
+    """Send a test message to all allowed Telegram chats."""
+    if pin != TELEMETRY_PIN:
+        raise HTTPException(status_code=403, detail="Invalid PIN")
+
+    from backend.services import telegram_service
+
+    if not telegram_service.is_configured():
+        return {"error": "TELEGRAM_BOT_TOKEN not set"}
+
+    count = await telegram_service.broadcast_to_all(
+        "🧪 <b>Test Message</b>\n\nYour Investor Dashboard Telegram integration is working! "
+        "You'll receive daily briefings and prediction scores here."
+    )
+    return {"sent_to": count, "message": "Test sent to all allowed chats"}
