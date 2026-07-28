@@ -508,6 +508,29 @@ class NewsCollectionScheduler:
 
                 if not is_cached and not is_stub:
                     logger.info("Auto-briefing generated for user %s", user_id)
+                    # Send to Telegram
+                    try:
+                        from backend.services import telegram_service
+                        mood = "neutral"
+                        # Get today's prediction mood
+                        from backend.models.orm import PredictionRecord
+                        pred_stmt = (
+                            select(PredictionRecord)
+                            .where(PredictionRecord.user_id == user_id, PredictionRecord.prediction_date == today)
+                        )
+                        async with AsyncSessionLocal() as tg_db:
+                            pred_result = await tg_db.execute(pred_stmt)
+                            pred = pred_result.scalar_one_or_none()
+                            if pred:
+                                mood = pred.market_mood
+                        await telegram_service.send_daily_briefing(
+                            briefing_text=briefing.get("briefing", ""),
+                            prediction_mood=mood,
+                            prediction_date=str(today),
+                        )
+                    except Exception as tg_err:
+                        logger.debug("Telegram briefing send skipped: %s", str(tg_err))
+
                 elif is_cached:
                     logger.debug("Briefing served from cache for user %s (no new news)", user_id)
 
@@ -524,6 +547,17 @@ class NewsCollectionScheduler:
                                 "Auto-scored prediction for user %s, date %s: %.1f%%",
                                 user_id, check_date, result["confidence_score"],
                             )
+                            # Notify via Telegram
+                            try:
+                                from backend.services import telegram_service
+                                await telegram_service.send_prediction_score(
+                                    prediction_date=str(check_date),
+                                    score=result["confidence_score"],
+                                    mood_accuracy=result.get("mood_accuracy", 0),
+                                    ticker_accuracy=result.get("ticker_accuracy", 0),
+                                )
+                            except Exception:
+                                pass
                     except Exception:
                         pass
 

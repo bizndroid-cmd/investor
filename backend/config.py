@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     # Telemetry
     telemetry_pin: str = "1234"
 
+    # Telegram Bot
+    telegram_bot_token: str = ""
+    telegram_allowed_chat_ids: str = ""  # Comma-separated chat IDs that can receive messages
+
     # App
     environment: Literal["development", "staging", "production"] = "development"
     cors_origins: str = "http://localhost:5173"
