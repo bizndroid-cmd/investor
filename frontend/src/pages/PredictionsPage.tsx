@@ -267,34 +267,38 @@ export function PredictionsPage() {
       {/* MOOD CALENDAR HEATMAP */}
       {calendar && calendar.length > 0 && (
         <div className="rounded-xl border bg-card p-5">
-          <h3 className="text-sm font-bold mb-4 flex items-center gap-2">
+          <h3 className="text-sm font-bold mb-3 flex items-center gap-2">
             📅 Mood Calendar
             <span className="text-xs font-normal text-muted-foreground">Last 30 days</span>
           </h3>
-          <div className="grid grid-cols-7 gap-1.5">
-            {["M","T","W","T","F","S","S"].map((d, i) => (
-              <div key={i} className="text-center text-xs text-muted-foreground font-medium">{d}</div>
-            ))}
-            {generateCalendarGrid(calendar).map((cell, i) => (
-              <div
-                key={i}
-                className={`aspect-square rounded-md flex items-center justify-center text-xs font-bold cursor-default transition-transform hover:scale-110 ${
-                  cell === null ? "bg-transparent" :
-                  cell.mood === "bullish" ? (cell.scored ? "bg-green-400 text-white" : "bg-green-200 text-green-700") :
-                  cell.mood === "bearish" ? (cell.scored ? "bg-red-400 text-white" : "bg-red-200 text-red-700") :
-                  cell.scored ? "bg-gray-300 text-white" : "bg-gray-100 text-gray-500"
-                }`}
-                title={cell ? `${cell.date}: ${cell.mood}${cell.score ? ` (${cell.score}%)` : " (pending)"}` : ""}
-              >
-                {cell?.score ? `${cell.score}` : cell ? (cell.mood === "bullish" ? "↑" : cell.mood === "bearish" ? "↓" : "→") : ""}
-              </div>
-            ))}
+          <div className="max-w-sm mx-auto">
+            <div className="grid grid-cols-7 gap-1 mb-1">
+              {["M","T","W","T","F","S","S"].map((d, i) => (
+                <div key={i} className="text-center text-[10px] text-muted-foreground font-medium py-0.5">{d}</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {generateCalendarGrid(calendar).map((cell, i) => (
+                <div
+                  key={i}
+                  className={`w-full aspect-square rounded-sm flex items-center justify-center text-[9px] font-bold cursor-default transition-all hover:scale-125 hover:z-10 hover:shadow-md ${
+                    cell === null ? "bg-muted/30" :
+                    cell.mood === "bullish" ? (cell.scored ? "bg-green-500 text-white" : "bg-green-200 text-green-800") :
+                    cell.mood === "bearish" ? (cell.scored ? "bg-red-500 text-white" : "bg-red-200 text-red-800") :
+                    cell.scored ? "bg-gray-400 text-white" : "bg-gray-100 text-gray-500"
+                  }`}
+                  title={cell ? `${cell.date}: ${cell.mood}${cell.score ? ` (${cell.score}%)` : " (pending)"}` : "No data"}
+                >
+                  {cell?.score ? Math.round(cell.score) : cell ? (cell.mood === "bullish" ? "↑" : cell.mood === "bearish" ? "↓" : "·") : ""}
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-400 rounded" /> Bullish</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 bg-red-400 rounded" /> Bearish</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 bg-gray-300 rounded" /> Neutral</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-200 rounded" /> Pending</span>
+          <div className="flex items-center justify-center gap-4 mt-3 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-green-500 rounded-sm" /> Bullish</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-red-500 rounded-sm" /> Bearish</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-gray-400 rounded-sm" /> Neutral</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-green-200 rounded-sm" /> Pending</span>
           </div>
         </div>
       )}
