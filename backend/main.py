@@ -36,6 +36,7 @@ from backend.routers import orders as orders_router
 from backend.routers import portfolio as portfolio_router
 from backend.routers import predictions as predictions_router
 from backend.routers import research as research_router
+from backend.routers import earnings as earnings_router
 from backend.routers import telemetry as telemetry_router
 from backend.routers import ws as ws_router
 from backend.services.market_data_service import MarketDataService
@@ -199,6 +200,7 @@ app.include_router(alerts_router.router)
 app.include_router(news_router.router)
 app.include_router(predictions_router.router)
 app.include_router(research_router.router)
+app.include_router(earnings_router.router)
 app.include_router(telemetry_router.router)
 app.include_router(ws_router.router)
 

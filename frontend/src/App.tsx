@@ -8,6 +8,7 @@ import { BrokersPage } from "@/pages/BrokersPage";
 import { ComparisonPage } from "@/pages/ComparisonPage";
 import { BriefingPage } from "@/pages/BriefingPage";
 import { DetailedNewsPage } from "@/pages/DetailedNewsPage";
+import { EarningsPage } from "@/pages/EarningsPage";
 import { PredictionsPage } from "@/pages/PredictionsPage";
 import { InsightsPage } from "@/pages/InsightsPage";
 import { ResearchPage } from "@/pages/ResearchPage";
@@ -35,6 +36,7 @@ function App() {
       <Routes>
         <Route element={<DashboardLayout />}>
           <Route path="/" element={<PortfolioPage />} />
+          <Route path="/earnings" element={<EarningsPage />} />
           <Route path="/insights" element={<InsightsPage />} />
           <Route path="/briefing" element={<BriefingPage />} />
           <Route path="/research" element={<ResearchPage />} />
