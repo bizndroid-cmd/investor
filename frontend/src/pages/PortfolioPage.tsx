@@ -108,7 +108,7 @@ export function PortfolioPage() {
         </div>
       )}
 
-      {/* Main layout: Left = charts/content, Right = summary cards */}
+      {/* Main layout: Left = charts/content, Right = summary cards + performers */}
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
         {/* LEFT COLUMN */}
         <div className="space-y-6">
@@ -120,14 +120,12 @@ export function PortfolioPage() {
 
           {/* Holdings table */}
           <HoldingsTable />
-
-          {/* Top & Bottom performers */}
-          <TopPerformers />
         </div>
 
-        {/* RIGHT COLUMN — summary stat cards stacked */}
+        {/* RIGHT COLUMN — summary stat cards + performers stacked */}
         <div className="space-y-3 lg:sticky lg:top-20 lg:self-start">
           <SummaryCards />
+          <TopPerformers />
         </div>
       </div>
     </div>
@@ -299,7 +297,7 @@ function SectorAllocationCard() {
 
         {/* Diversification Score */}
         {diversification && (
-          <div className="flex flex-col items-center justify-center p-4 rounded-lg border bg-secondary/30">
+          <div className="flex flex-col items-center justify-center p-4">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-2">Diversification</p>
             <div className="relative h-20 w-20">
               <svg viewBox="0 0 36 36" className="h-20 w-20 -rotate-90">
