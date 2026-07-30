@@ -239,13 +239,14 @@ class NewsService(INewsService):
         cached_briefing = await self._get_cached_briefing(user_id, data_date)
 
         if cached_briefing:
-            # If news hasn't been updated since briefing was generated, serve cache
+            # Serve cached briefing if it's less than 4 hours old OR news hasn't changed
+            cache_age_hours = (now - cached_briefing.generated_at).total_seconds() / 3600
             news_unchanged = (
                 last_fetched_at is None
                 or cached_briefing.news_last_fetched_at is None
                 or last_fetched_at <= cached_briefing.news_last_fetched_at
             )
-            if news_unchanged:
+            if cache_age_hours < 4 or news_unchanged:
                 return {
                     "briefing": cached_briefing.briefing_text,
                     "generated_at": cached_briefing.generated_at.isoformat(),
@@ -254,11 +255,17 @@ class NewsService(INewsService):
                     "collection_date": data_date.isoformat(),
                     "last_news_pull": last_fetched_at.isoformat() if last_fetched_at else None,
                     "cache_message": (
-                        f"Showing cached briefing from {cached_briefing.generated_at.strftime('%b %d, %I:%M %p')}. "
-                        "No new news since then — regenerate will use tokens without new data."
+                        f"Showing briefing from {cached_briefing.generated_at.strftime('%b %d, %I:%M %p')} "
+                        f"({cache_age_hours:.0f}h ago). "
+                        "Regenerate will use tokens."
+                    ) if news_unchanged else (
+                        f"Cached briefing ({cache_age_hours:.1f}h old). New news available — regenerate for fresh analysis."
                     ),
                     "error_reason": None,
                     "error_message": None,
+                    "provider": cached_briefing.provider,
+                    "model": cached_briefing.model,
+                    "articles_used": cached_briefing.articles_used,
                 }
 
         # 5. If stub mode, return placeholder

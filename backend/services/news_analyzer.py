@@ -24,11 +24,10 @@ from backend.models.domain import (
 logger = logging.getLogger(__name__)
 
 # Batch size: how many articles to send per LLM call
-BATCH_SIZE = 5
+BATCH_SIZE = 15
 
 # Delay between batched LLM calls (seconds) to respect RPM limits
-# With 10 RPM limit and batches of 5, we process 50 articles/min at max
-RATE_LIMIT_DELAY = 8.0  # ~7-8 calls/min leaves headroom
+RATE_LIMIT_DELAY = 8.0
 
 
 class NewsAnalyzer:
@@ -90,9 +89,11 @@ class NewsAnalyzer:
     ) -> list[AnalyzedNewsItem]:
         """Analyze a batch of articles using batched LLM calls with rate limiting.
 
-        Groups articles into batches of BATCH_SIZE and sends one LLM prompt
-        per batch. Adds a delay between batches to respect API rate limits.
-        Checks circuit breaker before attempting any calls.
+        Pipeline:
+        1. Deduplicate similar articles (title similarity)
+        2. Classify obvious articles with keyword rules (skip LLM)
+        3. Send remaining ambiguous articles to LLM in batches
+        4. Merge results
 
         Args:
             articles: List of raw articles to analyze.
@@ -104,61 +105,175 @@ class NewsAnalyzer:
         if not articles:
             return []
 
-        # Check if we're in stub mode — if so, use fast single-article analysis
+        # Step 1: Deduplicate
+        unique_articles = self._deduplicate(articles)
+        dedup_count = len(articles) - len(unique_articles)
+        if dedup_count > 0:
+            logger.info("Deduplication removed %d similar articles (%d remaining)", dedup_count, len(unique_articles))
+
+        # Step 2: Keyword-based classification for obvious articles
+        keyword_results, ambiguous_articles = self._classify_by_keywords(unique_articles, portfolio_tickers)
+        if keyword_results:
+            logger.info("Keyword classifier handled %d articles, %d need LLM", len(keyword_results), len(ambiguous_articles))
+
+        # Check if we're in stub mode
         from backend.config import settings
         if settings.llm_provider == "stub":
-            return await self._analyze_batch_simple(articles, portfolio_tickers)
+            llm_results = await self._analyze_batch_simple(ambiguous_articles, portfolio_tickers)
+            return keyword_results + llm_results
 
-        # Check circuit breaker — if open, skip LLM entirely and return stub results
+        # Check circuit breaker
         from backend.services.telemetry_service import get_telemetry_service
         telemetry = get_telemetry_service()
         if telemetry.is_circuit_open():
             remaining = telemetry.get_circuit_remaining_seconds()
             logger.info(
-                "Circuit breaker OPEN — skipping LLM analysis for %d articles. "
-                "Will retry in %.0f seconds.",
-                len(articles), remaining,
+                "Circuit breaker OPEN — skipping LLM for %d articles. Retry in %.0f seconds.",
+                len(ambiguous_articles), remaining,
             )
-            return self._stub_batch_results(articles, portfolio_tickers)
+            return keyword_results + self._stub_batch_results(ambiguous_articles, portfolio_tickers)
 
-        # Batch articles into groups
+        # Step 3: Send ambiguous articles to LLM in batches
         batches = [
-            articles[i:i + BATCH_SIZE]
-            for i in range(0, len(articles), BATCH_SIZE)
+            ambiguous_articles[i:i + BATCH_SIZE]
+            for i in range(0, len(ambiguous_articles), BATCH_SIZE)
         ]
 
-        results: list[AnalyzedNewsItem] = []
+        llm_results: list[AnalyzedNewsItem] = []
         total_batches = len(batches)
 
         for batch_idx, batch in enumerate(batches):
-            # Re-check circuit breaker before each batch
             if telemetry.is_circuit_open():
-                logger.info(
-                    "Circuit breaker tripped mid-batch — stopping at batch %d/%d",
-                    batch_idx + 1, total_batches,
-                )
-                # Return stub results for remaining articles
+                logger.info("Circuit breaker tripped mid-batch at %d/%d", batch_idx + 1, total_batches)
                 remaining_articles = [a for b in batches[batch_idx:] for a in b]
-                results.extend(self._stub_batch_results(remaining_articles, portfolio_tickers))
+                llm_results.extend(self._stub_batch_results(remaining_articles, portfolio_tickers))
                 break
 
-            logger.debug(
-                "Analyzing batch %d/%d (%d articles)",
-                batch_idx + 1, total_batches, len(batch),
-            )
-
+            logger.debug("Analyzing batch %d/%d (%d articles)", batch_idx + 1, total_batches, len(batch))
             batch_results = await self._analyze_article_batch(batch, portfolio_tickers)
-            results.extend(batch_results)
+            llm_results.extend(batch_results)
 
-            # Rate limit: wait between batches (skip after last batch)
             if batch_idx < total_batches - 1:
                 await asyncio.sleep(RATE_LIMIT_DELAY)
 
+        all_results = keyword_results + llm_results
         logger.info(
-            "Batch analysis complete: %d articles → %d results (%d LLM calls)",
-            len(articles), len(results), total_batches,
+            "Analysis complete: %d input, %d deduped, %d keyword-classified, %d LLM-analyzed (%d calls)",
+            len(articles), dedup_count, len(keyword_results), len(llm_results), total_batches,
         )
-        return results
+        return all_results
+
+    def _deduplicate(self, articles: list[RawNewsArticle]) -> list[RawNewsArticle]:
+        """Remove near-duplicate articles based on title similarity.
+
+        Uses normalized title comparison. Two articles are duplicates if
+        their normalized titles share >80% of words.
+        """
+        seen_titles: list[set[str]] = []
+        unique: list[RawNewsArticle] = []
+
+        for article in articles:
+            title_words = set(article.title.lower().split())
+            # Remove very short words and numbers
+            title_words = {w for w in title_words if len(w) > 2 and not w.isdigit()}
+
+            if not title_words:
+                unique.append(article)
+                seen_titles.append(title_words)
+                continue
+
+            is_dup = False
+            for seen in seen_titles:
+                if not seen:
+                    continue
+                overlap = len(title_words & seen) / max(len(title_words), len(seen))
+                if overlap > 0.8:
+                    is_dup = True
+                    break
+
+            if not is_dup:
+                unique.append(article)
+                seen_titles.append(title_words)
+
+        return unique
+
+    def _classify_by_keywords(
+        self, articles: list[RawNewsArticle], portfolio_tickers: list[str]
+    ) -> tuple[list[AnalyzedNewsItem], list[RawNewsArticle]]:
+        """Classify articles with strong keyword signals without LLM.
+
+        Returns (classified_results, remaining_ambiguous_articles).
+        Articles are classified only if they have strong unambiguous signals.
+        """
+        BULLISH_KEYWORDS = {
+            "surge", "surges", "rally", "rallies", "soars", "jumps", "gains",
+            "profit", "profits", "beats", "exceeds", "upgrade", "upgraded",
+            "bullish", "record high", "all-time high", "outperform", "buy",
+            "dividend", "bonus", "buyback", "strong results", "beat estimates",
+        }
+        BEARISH_KEYWORDS = {
+            "crash", "crashes", "plunge", "plunges", "falls", "drops", "slumps",
+            "loss", "losses", "misses", "disappoints", "downgrade", "downgraded",
+            "bearish", "sell", "warning", "fraud", "scam", "default", "debt crisis",
+            "cuts dividend", "profit warning", "layoffs", "shutdown",
+        }
+        HIGH_IMPACT_KEYWORDS = {
+            "rbi", "sebi", "government", "budget", "policy", "regulation",
+            "merger", "acquisition", "ipo", "fpo", "split", "delisting",
+            "rate hike", "rate cut", "inflation", "gdp",
+        }
+
+        classified: list[AnalyzedNewsItem] = []
+        ambiguous: list[RawNewsArticle] = []
+
+        tickers_upper = {t.upper() for t in portfolio_tickers}
+
+        for article in articles:
+            text = f"{article.title} {article.raw_content[:300]}".lower()
+            words = set(text.split())
+
+            # Find related tickers by simple string match
+            content_upper = f"{article.title} {article.raw_content}".upper()
+            related_tickers = [t for t in portfolio_tickers if t.upper() in content_upper]
+
+            bullish_count = sum(1 for kw in BULLISH_KEYWORDS if kw in text)
+            bearish_count = sum(1 for kw in BEARISH_KEYWORDS if kw in text)
+            high_impact = any(kw in text for kw in HIGH_IMPACT_KEYWORDS)
+
+            # Only classify if signal is strong and unambiguous
+            if bullish_count >= 2 and bearish_count == 0:
+                sentiment = SentimentScore.BULLISH
+            elif bearish_count >= 2 and bullish_count == 0:
+                sentiment = SentimentScore.BEARISH
+            elif bullish_count == 0 and bearish_count == 0 and not related_tickers:
+                # Clearly irrelevant neutral article
+                sentiment = SentimentScore.NEUTRAL
+            else:
+                # Ambiguous — needs LLM
+                ambiguous.append(article)
+                continue
+
+            impact = ImpactLevel.HIGH if high_impact else ImpactLevel.MEDIUM if related_tickers else ImpactLevel.LOW
+            relevance = 0.8 if related_tickers else 0.4
+
+            classified.append(
+                AnalyzedNewsItem(
+                    id=uuid4(),
+                    title=article.title,
+                    source_name=article.source_name,
+                    source_url=article.source_url,
+                    published_at=article.published_at,
+                    summary=article.title[:200],
+                    sentiment_score=sentiment,
+                    impact_level=impact,
+                    related_tickers=related_tickers,
+                    relevance_score=relevance,
+                    is_stub=False,
+                    analyzed_at=datetime.now(timezone.utc),
+                )
+            )
+
+        return classified, ambiguous
 
     async def _analyze_batch_simple(
         self, articles: list[RawNewsArticle], portfolio_tickers: list[str]
