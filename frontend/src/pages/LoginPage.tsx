@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { apiFetch } from "@/api/client";
+import { Zap } from "lucide-react";
 
 interface AuthTokens {
   access_token: string;
@@ -45,72 +46,88 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-sm rounded-lg border bg-card p-6 shadow-sm">
-        <h1 className="text-xl font-bold mb-1">Stock Investment Dashboard</h1>
-        <p className="text-sm text-muted-foreground mb-6">
-          {isRegister ? "Create an account" : "Sign in to your account"}
-        </p>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium mb-1">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              placeholder="you@example.com"
-            />
+      <div className="w-full max-w-sm animate-scale-in">
+        <div className="rounded-2xl border bg-card p-8 shadow-xl shadow-primary/5">
+          {/* Logo */}
+          <div className="flex items-center justify-center gap-2.5 mb-6">
+            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-primary/10">
+              <Zap className="h-5 w-5 text-primary" />
+            </div>
+            <span className="text-xl font-bold tracking-tight">Investor</span>
           </div>
 
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium mb-1">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              placeholder="••••••••"
-            />
-          </div>
+          <p className="text-sm text-muted-foreground text-center mb-6">
+            {isRegister ? "Create your account" : "Sign in to continue"}
+          </p>
 
-          {error && (
-            <p className="text-sm text-destructive" role="alert">
-              {error}
-            </p>
-          )}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="email" className="block text-xs font-medium mb-1.5 text-muted-foreground">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="input-field"
+                placeholder="you@example.com"
+              />
+            </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-          >
-            {loading ? "Please wait..." : isRegister ? "Register" : "Sign In"}
-          </button>
-        </form>
+            <div>
+              <label htmlFor="password" className="block text-xs font-medium mb-1.5 text-muted-foreground">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                required
+                minLength={8}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="input-field"
+                placeholder="••••••••"
+              />
+            </div>
 
-        <p className="mt-4 text-center text-sm text-muted-foreground">
-          {isRegister ? "Already have an account?" : "Don't have an account?"}{" "}
-          <button
-            type="button"
-            onClick={() => {
-              setIsRegister(!isRegister);
-              setError(null);
-            }}
-            className="text-primary underline hover:no-underline"
-          >
-            {isRegister ? "Sign in" : "Register"}
-          </button>
-        </p>
+            {error && (
+              <p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2" role="alert">
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary w-full"
+            >
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-3.5 w-3.5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                  Please wait…
+                </span>
+              ) : (
+                isRegister ? "Create Account" : "Sign In"
+              )}
+            </button>
+          </form>
+
+          <p className="mt-5 text-center text-xs text-muted-foreground">
+            {isRegister ? "Already have an account?" : "Don't have an account?"}{" "}
+            <button
+              type="button"
+              onClick={() => {
+                setIsRegister(!isRegister);
+                setError(null);
+              }}
+              className="text-primary font-medium hover:underline transition-colors"
+            >
+              {isRegister ? "Sign in" : "Register"}
+            </button>
+          </p>
+        </div>
       </div>
     </div>
   );

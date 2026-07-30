@@ -266,7 +266,7 @@ class AlertService(IAlertService):
         return triggered_alerts
 
     async def _broadcast_alert_notification(self, triggered: TriggeredAlert) -> None:
-        """Send an alert triggered notification to the user via WebSocket."""
+        """Send an alert triggered notification to the user via WebSocket + Telegram."""
         message = json.dumps({
             "type": "alert_triggered",
             "data": json.loads(triggered.model_dump_json()),
@@ -277,3 +277,23 @@ class AlertService(IAlertService):
                 await ws.send_text(message)
             except Exception:
                 pass
+
+        # Also send via Telegram
+        try:
+            from backend.services import telegram_service
+
+            direction = "above" if triggered.condition == "above" else "below"
+            emoji = "🚨" if triggered.condition == "above" else "🔻"
+
+            tg_message = (
+                f"{emoji} <b>Price Alert Triggered!</b>\n\n"
+                f"<b>{triggered.ticker}</b> crossed your target\n\n"
+                f"  🎯 Target: ₹{triggered.target_price:,.2f}\n"
+                f"  📊 Current: ₹{triggered.triggered_price:,.2f}\n"
+                f"  📋 Condition: Price went {direction}\n\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"<i>Review in app → Alerts section</i>"
+            )
+            await telegram_service.broadcast_to_all(tg_message)
+        except Exception as e:
+            logger.debug("Telegram alert notification failed: %s", str(e))

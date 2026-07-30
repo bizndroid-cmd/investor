@@ -173,6 +173,47 @@ async def send_portfolio_alert(change_pct: float, total_value: float) -> int:
     return await broadcast_to_all(message)
 
 
+async def send_alert_proximity_digest(proximity_data: list[dict]) -> int:
+    """Daily digest of alerts approaching their targets.
+
+    Called after market close to warn about imminent/close alerts.
+    """
+    if not proximity_data:
+        return 0
+
+    imminent = [p for p in proximity_data if p["status"] == "imminent"]
+    close = [p for p in proximity_data if p["status"] == "close"]
+
+    if not imminent and not close:
+        return 0
+
+    lines = ["⚡ <b>Alert Watchlist Update</b>\n"]
+
+    if imminent:
+        lines.append("🔴 <b>Imminent (within 2%):</b>")
+        for p in imminent[:4]:
+            direction = "↓" if p["condition"] == "below" else "↑"
+            lines.append(
+                f"  {direction} <b>{p['ticker']}</b> — {p['distance_pct']:.1f}% from ₹{p['target_price']:,.0f}"
+                f" (now ₹{p['current_price']:,.0f})"
+            )
+        lines.append("")
+
+    if close:
+        lines.append("🟡 <b>Approaching (within 5%):</b>")
+        for p in close[:4]:
+            direction = "↓" if p["condition"] == "below" else "↑"
+            lines.append(
+                f"  {direction} {p['ticker']} — {p['distance_pct']:.1f}% from ₹{p['target_price']:,.0f}"
+            )
+        lines.append("")
+
+    lines.append("━━━━━━━━━━━━━━━")
+    lines.append("<i>Manage alerts in app → Alerts section</i>")
+
+    return await broadcast_to_all("\n".join(lines))
+
+
 async def get_bot_updates() -> list[dict]:
     """Fetch recent messages sent TO the bot (for getting chat IDs).
 

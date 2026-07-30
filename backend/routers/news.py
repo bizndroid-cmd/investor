@@ -65,6 +65,45 @@ async def get_portfolio_briefing(
     return await news_service.generate_briefing(user_id=session.user_id)
 
 
+@router.get("/briefing/history")
+async def get_briefing_history(
+    days: int = Query(30, ge=1, le=90),
+    session: Session = Depends(get_current_user),
+) -> list[dict]:
+    """Return past briefings stored in the cache."""
+    from backend.database import AsyncSessionLocal
+    from backend.models.orm import BriefingCache
+    from sqlalchemy import select, desc
+    from datetime import datetime, timedelta, timezone
+
+    cutoff = datetime.now(timezone.utc).date() - timedelta(days=days)
+
+    async with AsyncSessionLocal() as db:
+        stmt = (
+            select(BriefingCache)
+            .where(
+                BriefingCache.user_id == session.user_id,
+                BriefingCache.collection_date >= cutoff,
+            )
+            .order_by(desc(BriefingCache.collection_date))
+        )
+        result = await db.execute(stmt)
+        records = result.scalars().all()
+
+    return [
+        {
+            "id": str(r.id),
+            "collection_date": r.collection_date.isoformat() if hasattr(r.collection_date, 'isoformat') else str(r.collection_date),
+            "briefing_text": r.briefing_text,
+            "provider": r.provider,
+            "model": r.model,
+            "articles_used": r.articles_used,
+            "generated_at": r.generated_at.isoformat() if r.generated_at else None,
+        }
+        for r in records
+    ]
+
+
 @router.get("/collection-status")
 async def get_collection_status(
     session: Session = Depends(get_current_user),

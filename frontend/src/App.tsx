@@ -6,9 +6,11 @@ import { OrdersPage } from "@/pages/OrdersPage";
 import { AlertsPage } from "@/pages/AlertsPage";
 import { BrokersPage } from "@/pages/BrokersPage";
 import { ComparisonPage } from "@/pages/ComparisonPage";
-import { NewsPage } from "@/pages/NewsPage";
+import { BriefingPage } from "@/pages/BriefingPage";
+import { DetailedNewsPage } from "@/pages/DetailedNewsPage";
 import { PredictionsPage } from "@/pages/PredictionsPage";
 import { InsightsPage } from "@/pages/InsightsPage";
+import { ResearchPage } from "@/pages/ResearchPage";
 import { NerdStatsPage } from "@/pages/NerdStatsPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { ToastContainer } from "@/components/common/Toast";
@@ -33,13 +35,15 @@ function App() {
       <Routes>
         <Route element={<DashboardLayout />}>
           <Route path="/" element={<PortfolioPage />} />
-          <Route path="/orders" element={<OrdersPage />} />
-          <Route path="/alerts" element={<AlertsPage />} />
-          <Route path="/brokers" element={<BrokersPage />} />
-          <Route path="/comparison" element={<ComparisonPage />} />
-          <Route path="/news" element={<NewsPage />} />
-          <Route path="/predictions" element={<PredictionsPage />} />
           <Route path="/insights" element={<InsightsPage />} />
+          <Route path="/briefing" element={<BriefingPage />} />
+          <Route path="/research" element={<ResearchPage />} />
+          <Route path="/predictions" element={<PredictionsPage />} />
+          <Route path="/news" element={<DetailedNewsPage />} />
+          <Route path="/orders" element={<OrdersPage />} />
+          <Route path="/comparison" element={<ComparisonPage />} />
+          <Route path="/brokers" element={<BrokersPage />} />
+          <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/nerd-stats" element={<NerdStatsPage />} />
         </Route>
       </Routes>
