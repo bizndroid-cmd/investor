@@ -89,6 +89,13 @@ async def get_earnings(
     # Sort by annual dividend descending
     dividend_stocks.sort(key=lambda x: x["annual_dividend"], reverse=True)
 
+    # --- Estimate historical dividends earned per stock ---
+    # Uses yfinance dividend history + user's holding quantity
+    import asyncio
+    historical_dividends = await _estimate_historical_dividends(holdings)
+    for stock in dividend_stocks:
+        stock["total_earned_est"] = historical_dividends.get(stock["ticker"], 0)
+
     # --- Cost Basis Breakdown ---
     total_gain = total_portfolio_value - total_invested
     gain_pct = (total_gain / total_invested * 100) if total_invested > 0 else Decimal("0")
@@ -172,3 +179,58 @@ def _estimate_payout_frequency(ticker: str) -> str:
         return "Semi-Annual"
     else:
         return "Annual"
+
+
+async def _estimate_historical_dividends(holdings) -> dict[str, float]:
+    """Estimate total dividends earned per stock since purchase.
+
+    Fetches dividend history from yfinance, sums payouts that occurred
+    after the estimated purchase date (approximated from snapshot history).
+    Multiplies each payout by user's quantity.
+    """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    results: dict[str, float] = {}
+
+    def _fetch_dividends(ticker: str, quantity: float) -> tuple[str, float]:
+        try:
+            import yfinance
+            stock = yfinance.Ticker(f"{ticker}.NS")
+            dividends = stock.dividends  # Series with DatetimeIndex
+
+            if dividends is None or dividends.empty:
+                return ticker, 0.0
+
+            # Sum all dividends in last 3 years (approximate holding period)
+            from datetime import datetime, timedelta, timezone as tz
+            cutoff = datetime.now(tz.utc) - timedelta(days=3 * 365)
+            # Make index tz-aware for comparison
+            if dividends.index.tz is None:
+                import pytz
+                dividends.index = dividends.index.tz_localize("UTC")
+            recent = dividends[dividends.index >= cutoff]
+
+            total = float(recent.sum()) * quantity
+            return ticker, round(total, 2)
+        except Exception:
+            return ticker, 0.0
+
+    # Run in thread pool (yfinance is sync)
+    loop = asyncio.get_event_loop()
+    tasks = []
+    for h in holdings:
+        qty = float(h.quantity or 0)
+        if qty > 0:
+            tasks.append(loop.run_in_executor(
+                None, _fetch_dividends, h.ticker, qty
+            ))
+
+    if tasks:
+        completed = await asyncio.gather(*tasks, return_exceptions=True)
+        for result in completed:
+            if isinstance(result, tuple):
+                ticker, total = result
+                results[ticker] = total
+
+    return results

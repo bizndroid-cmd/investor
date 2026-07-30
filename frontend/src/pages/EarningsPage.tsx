@@ -53,6 +53,7 @@ interface DividendStock {
   monthly_dividend: number;
   yield_on_cost_pct: number;
   payout_frequency: string;
+  total_earned_est?: number;
 }
 
 async function fetchEarnings(): Promise<EarningsData> {
@@ -324,6 +325,7 @@ function DividendListCard({ data }: { data: EarningsData }) {
                 <th className="text-right py-2 font-medium text-muted-foreground">Yield</th>
                 <th className="text-right py-2 font-medium text-muted-foreground">Annual ₹</th>
                 <th className="text-right py-2 font-medium text-muted-foreground">Monthly ₹</th>
+                <th className="text-right py-2 font-medium text-muted-foreground">Earned So Far</th>
                 <th className="text-right py-2 font-medium text-muted-foreground">Yield on Cost</th>
                 <th className="text-right py-2 font-medium text-muted-foreground">Payout</th>
               </tr>
@@ -338,6 +340,13 @@ function DividendListCard({ data }: { data: EarningsData }) {
                   <td className="text-right py-2.5 text-emerald-500 font-medium">{s.dividend_yield_pct}%</td>
                   <td className="text-right py-2.5 font-medium">₹{s.annual_dividend.toLocaleString()}</td>
                   <td className="text-right py-2.5 text-muted-foreground">₹{s.monthly_dividend}</td>
+                  <td className="text-right py-2.5">
+                    {s.total_earned_est && s.total_earned_est > 0 ? (
+                      <span className="text-emerald-500 font-medium">₹{s.total_earned_est.toLocaleString()}</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
                   <td className="text-right py-2.5">
                     <span className={s.yield_on_cost_pct > s.dividend_yield_pct ? "text-emerald-500" : ""}>
                       {s.yield_on_cost_pct}%
