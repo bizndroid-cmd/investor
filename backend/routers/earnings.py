@@ -90,24 +90,13 @@ async def get_earnings(
     dividend_stocks.sort(key=lambda x: x["annual_dividend"], reverse=True)
 
     # --- Estimate historical dividends earned per stock ---
-    # Uses yfinance dividend history + user's holding quantity
+    # Uses avg_buy_price + yfinance price history to estimate purchase date
     import asyncio
-    historical_dividends = await _estimate_historical_dividends(holdings)
-
-    # Get purchase dates for display
-    from backend.models.orm import PortfolioSnapshot as PS2
-    from sqlalchemy import func as sa_func
-    pd_stmt = (
-        select(PS2.ticker, sa_func.min(PS2.snapshot_date).label("first_date"))
-        .where(PS2.user_id == session.user_id)
-        .group_by(PS2.ticker)
-    )
-    pd_result = await db.execute(pd_stmt)
-    purchase_date_map = {row[0]: row[1].isoformat() for row in pd_result.all()}
+    historical_dividends, estimated_purchase_dates = await _estimate_historical_dividends(holdings)
 
     for stock in dividend_stocks:
         stock["total_earned_est"] = historical_dividends.get(stock["ticker"], 0)
-        stock["purchase_date"] = purchase_date_map.get(stock["ticker"])
+        stock["purchase_date"] = estimated_purchase_dates.get(stock["ticker"])
 
     # --- Cost Basis Breakdown ---
     total_gain = total_portfolio_value - total_invested
@@ -197,80 +186,81 @@ def _estimate_payout_frequency(ticker: str) -> str:
 async def _estimate_historical_dividends(holdings) -> dict[str, float]:
     """Estimate total dividends earned per stock since purchase.
 
-    Uses the earliest portfolio_snapshot date as a proxy for purchase date.
-    Fetches dividend history from yfinance, sums payouts from purchase date onwards.
-    Multiplies each payout by user's quantity.
+    Strategy: Use avg_buy_price + yfinance historical prices to estimate
+    the approximate purchase date (when stock was at that price).
+    Then sum all dividends from that date onwards × quantity.
     """
     import asyncio
 
-    # Get earliest snapshot date per ticker from DB
-    from backend.database import AsyncSessionLocal
-    from backend.models.orm import PortfolioSnapshot
-    from sqlalchemy import select, func
-
-    purchase_dates: dict[str, str] = {}
-    user_id = holdings[0].user_id if holdings else None
-
-    if user_id:
-        async with AsyncSessionLocal() as db:
-            stmt = (
-                select(
-                    PortfolioSnapshot.ticker,
-                    func.min(PortfolioSnapshot.snapshot_date).label("first_date"),
-                )
-                .where(PortfolioSnapshot.user_id == user_id)
-                .group_by(PortfolioSnapshot.ticker)
-            )
-            result = await db.execute(stmt)
-            for row in result.all():
-                purchase_dates[row[0]] = row[1].isoformat()
-
     results: dict[str, float] = {}
+    purchase_dates_out: dict[str, str] = {}
 
-    def _fetch_dividends(ticker: str, quantity: float, purchase_date_str: str | None) -> tuple[str, float]:
+    def _fetch_dividends(ticker: str, quantity: float, avg_buy_price: float) -> tuple[str, float, str]:
         try:
             import yfinance
-            from datetime import datetime, timedelta, timezone as tz
+            import pandas as pd
 
             stock = yfinance.Ticker(f"{ticker}.NS")
+            hist = stock.history(period="max")
             dividends = stock.dividends
 
             if dividends is None or dividends.empty:
-                return ticker, 0.0
+                return ticker, 0.0, ""
 
-            # Use purchase date if available, otherwise 3 years back
-            if purchase_date_str:
-                import pandas as pd
-                cutoff = pd.Timestamp(purchase_date_str, tz="Asia/Kolkata")
+            if hist is None or hist.empty:
+                return ticker, 0.0, ""
+
+            # Estimate purchase date from avg_buy_price
+            # Find the FIRST date the stock was near the avg buy price
+            # (looking from oldest to newest for first occurrence)
+            if avg_buy_price > 0:
+                hist_sorted = hist.sort_index()
+                hist_sorted["diff"] = abs(hist_sorted["Close"] - avg_buy_price)
+                # Get dates where price was within 5% of avg buy price
+                near_price = hist_sorted[hist_sorted["diff"] < avg_buy_price * 0.05]
+                if not near_price.empty:
+                    # Take the first occurrence (earliest purchase date)
+                    purchase_date = near_price.index[0]
+                else:
+                    # Fallback: closest single match
+                    purchase_date = hist_sorted["diff"].idxmin()
             else:
-                cutoff = dividends.index[-1] - timedelta(days=3 * 365)
+                # No avg buy price, use 3 years back
+                purchase_date = hist.index[-1] - pd.Timedelta(days=3*365)
 
-            # Ensure timezone compatibility
+            purchase_str = purchase_date.strftime("%Y-%m-%d")
+
+            # Ensure timezone compatibility for dividend filtering
             if dividends.index.tz is None:
                 dividends.index = dividends.index.tz_localize("Asia/Kolkata")
+            if purchase_date.tzinfo is None:
+                purchase_date = purchase_date.tz_localize("Asia/Kolkata")
 
-            recent = dividends[dividends.index >= cutoff]
-            total = float(recent.sum()) * quantity
-            return ticker, round(total, 2)
-        except Exception:
-            return ticker, 0.0
+            earned = dividends[dividends.index >= purchase_date]
+            total = float(earned.sum()) * quantity
+
+            return ticker, round(total, 2), purchase_str
+        except Exception as e:
+            return ticker, 0.0, ""
 
     # Run in thread pool
     loop = asyncio.get_event_loop()
     tasks = []
     for h in holdings:
         qty = float(h.quantity or 0)
+        avg_price = float(h.avg_buy_price or 0)
         if qty > 0:
-            pd_str = purchase_dates.get(h.ticker)
             tasks.append(loop.run_in_executor(
-                None, _fetch_dividends, h.ticker, qty, pd_str
+                None, _fetch_dividends, h.ticker, qty, avg_price
             ))
 
     if tasks:
         completed = await asyncio.gather(*tasks, return_exceptions=True)
         for result in completed:
-            if isinstance(result, tuple):
-                ticker, total = result
+            if isinstance(result, tuple) and len(result) == 3:
+                ticker, total, pdate = result
                 results[ticker] = total
+                if pdate:
+                    purchase_dates_out[ticker] = pdate
 
-    return results
+    return results, purchase_dates_out
