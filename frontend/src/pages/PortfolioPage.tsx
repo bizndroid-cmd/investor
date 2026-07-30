@@ -3,7 +3,6 @@ import { Wifi, Loader2, AlertTriangle, PieChart as PieChartIcon } from "lucide-r
 import { HoldingsTable } from "@/components/portfolio/HoldingsTable";
 import { TopPerformers } from "@/components/portfolio/TopPerformers";
 import { FundamentalsPanel } from "@/components/portfolio/FundamentalsPanel";
-import { AllocationChart } from "@/components/charts/AllocationChart";
 import { usePortfolio, useRefreshPortfolio } from "@/hooks/usePortfolio";
 import { usePriceSocket } from "@/hooks/usePriceSocket";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
@@ -57,7 +56,12 @@ export function PortfolioPage() {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-2xl font-bold">Portfolio</h2>
+        <div>
+          <h2 className="text-2xl font-bold">Portfolio</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Based on equity owned as seen in the Groww brokerage app
+          </p>
+        </div>
         <div className="flex items-center gap-3">
           {portfolio && (
             <span className="text-xs text-muted-foreground">
@@ -108,9 +112,6 @@ export function PortfolioPage() {
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
         {/* LEFT COLUMN */}
         <div className="space-y-6">
-          {/* Allocation pie */}
-          <AllocationChart />
-
           {/* Sector allocation + Diversification */}
           <SectorAllocationCard />
 
