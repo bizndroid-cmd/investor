@@ -169,12 +169,6 @@ function SummaryCards() {
       sub: formatPercent(portfolio.total_gain_loss_percent),
       color: Number(portfolio.total_gain_loss) >= 0 ? "text-emerald-500" : "text-red-500",
     },
-    {
-      label: "Day Change",
-      value: formatCurrency(portfolio.day_change),
-      sub: formatPercent(portfolio.day_change_percent),
-      color: Number(portfolio.day_change) >= 0 ? "text-emerald-500" : "text-red-500",
-    },
   ];
 
   return (
@@ -298,7 +292,7 @@ function SectorAllocationCard() {
         {/* Diversification Score */}
         {diversification && (
           <div className="flex flex-col items-center justify-center p-4">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-2">Diversification</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-2">Score</p>
             <div className="relative h-20 w-20">
               <svg viewBox="0 0 36 36" className="h-20 w-20 -rotate-90">
                 <path

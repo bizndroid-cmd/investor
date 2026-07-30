@@ -72,14 +72,14 @@ export function FundamentalsPanel() {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
+        <table className="w-full text-xs table-fixed">
           <thead className="border-b">
             <tr className="text-muted-foreground">
-              <th className="text-left py-2 pr-3 font-medium">Ticker</th>
-              <th className="text-right py-2 px-2 font-medium">P/E</th>
-              <th className="text-right py-2 px-2 font-medium">ROCE%</th>
-              <th className="text-right py-2 px-2 font-medium">ROE%</th>
-              <th className="text-right py-2 px-2 font-medium">Div%</th>
+              <th className="text-left py-2 pr-3 font-medium w-[80px]">Ticker</th>
+              <th className="text-right py-2 px-2 font-medium w-[50px]">P/E</th>
+              <th className="text-right py-2 px-2 font-medium w-[55px]">ROCE%</th>
+              <th className="text-right py-2 px-2 font-medium w-[50px]">ROE%</th>
+              <th className="text-right py-2 px-2 font-medium w-[45px]">Div%</th>
               <th className="text-left py-2 pl-3 font-medium">Key Signal</th>
             </tr>
           </thead>
