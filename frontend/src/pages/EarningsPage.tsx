@@ -54,6 +54,7 @@ interface DividendStock {
   yield_on_cost_pct: number;
   payout_frequency: string;
   total_earned_est?: number;
+  purchase_date?: string | null;
 }
 
 async function fetchEarnings(): Promise<EarningsData> {
@@ -342,7 +343,14 @@ function DividendListCard({ data }: { data: EarningsData }) {
                   <td className="text-right py-2.5 text-muted-foreground">₹{s.monthly_dividend}</td>
                   <td className="text-right py-2.5">
                     {s.total_earned_est && s.total_earned_est > 0 ? (
-                      <span className="text-emerald-500 font-medium">₹{s.total_earned_est.toLocaleString()}</span>
+                      <div>
+                        <span className="text-emerald-500 font-medium">₹{s.total_earned_est.toLocaleString()}</span>
+                        {s.purchase_date && (
+                          <p className="text-[9px] text-muted-foreground">
+                            since {new Date(s.purchase_date).toLocaleDateString([], { month: "short", year: "2-digit" })}
+                          </p>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}

@@ -93,8 +93,21 @@ async def get_earnings(
     # Uses yfinance dividend history + user's holding quantity
     import asyncio
     historical_dividends = await _estimate_historical_dividends(holdings)
+
+    # Get purchase dates for display
+    from backend.models.orm import PortfolioSnapshot as PS2
+    from sqlalchemy import func as sa_func
+    pd_stmt = (
+        select(PS2.ticker, sa_func.min(PS2.snapshot_date).label("first_date"))
+        .where(PS2.user_id == session.user_id)
+        .group_by(PS2.ticker)
+    )
+    pd_result = await db.execute(pd_stmt)
+    purchase_date_map = {row[0]: row[1].isoformat() for row in pd_result.all()}
+
     for stock in dividend_stocks:
         stock["total_earned_est"] = historical_dividends.get(stock["ticker"], 0)
+        stock["purchase_date"] = purchase_date_map.get(stock["ticker"])
 
     # --- Cost Basis Breakdown ---
     total_gain = total_portfolio_value - total_invested
@@ -184,46 +197,73 @@ def _estimate_payout_frequency(ticker: str) -> str:
 async def _estimate_historical_dividends(holdings) -> dict[str, float]:
     """Estimate total dividends earned per stock since purchase.
 
-    Fetches dividend history from yfinance, sums payouts that occurred
-    after the estimated purchase date (approximated from snapshot history).
+    Uses the earliest portfolio_snapshot date as a proxy for purchase date.
+    Fetches dividend history from yfinance, sums payouts from purchase date onwards.
     Multiplies each payout by user's quantity.
     """
     import asyncio
-    from concurrent.futures import ThreadPoolExecutor
+
+    # Get earliest snapshot date per ticker from DB
+    from backend.database import AsyncSessionLocal
+    from backend.models.orm import PortfolioSnapshot
+    from sqlalchemy import select, func
+
+    purchase_dates: dict[str, str] = {}
+    user_id = holdings[0].user_id if holdings else None
+
+    if user_id:
+        async with AsyncSessionLocal() as db:
+            stmt = (
+                select(
+                    PortfolioSnapshot.ticker,
+                    func.min(PortfolioSnapshot.snapshot_date).label("first_date"),
+                )
+                .where(PortfolioSnapshot.user_id == user_id)
+                .group_by(PortfolioSnapshot.ticker)
+            )
+            result = await db.execute(stmt)
+            for row in result.all():
+                purchase_dates[row[0]] = row[1].isoformat()
 
     results: dict[str, float] = {}
 
-    def _fetch_dividends(ticker: str, quantity: float) -> tuple[str, float]:
+    def _fetch_dividends(ticker: str, quantity: float, purchase_date_str: str | None) -> tuple[str, float]:
         try:
             import yfinance
+            from datetime import datetime, timedelta, timezone as tz
+
             stock = yfinance.Ticker(f"{ticker}.NS")
-            dividends = stock.dividends  # Series with DatetimeIndex
+            dividends = stock.dividends
 
             if dividends is None or dividends.empty:
                 return ticker, 0.0
 
-            # Sum all dividends in last 3 years (approximate holding period)
-            from datetime import datetime, timedelta, timezone as tz
-            cutoff = datetime.now(tz.utc) - timedelta(days=3 * 365)
-            # Make index tz-aware for comparison
-            if dividends.index.tz is None:
-                import pytz
-                dividends.index = dividends.index.tz_localize("UTC")
-            recent = dividends[dividends.index >= cutoff]
+            # Use purchase date if available, otherwise 3 years back
+            if purchase_date_str:
+                import pandas as pd
+                cutoff = pd.Timestamp(purchase_date_str, tz="Asia/Kolkata")
+            else:
+                cutoff = dividends.index[-1] - timedelta(days=3 * 365)
 
+            # Ensure timezone compatibility
+            if dividends.index.tz is None:
+                dividends.index = dividends.index.tz_localize("Asia/Kolkata")
+
+            recent = dividends[dividends.index >= cutoff]
             total = float(recent.sum()) * quantity
             return ticker, round(total, 2)
         except Exception:
             return ticker, 0.0
 
-    # Run in thread pool (yfinance is sync)
+    # Run in thread pool
     loop = asyncio.get_event_loop()
     tasks = []
     for h in holdings:
         qty = float(h.quantity or 0)
         if qty > 0:
+            pd_str = purchase_dates.get(h.ticker)
             tasks.append(loop.run_in_executor(
-                None, _fetch_dividends, h.ticker, qty
+                None, _fetch_dividends, h.ticker, qty, pd_str
             ))
 
     if tasks:
