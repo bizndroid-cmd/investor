@@ -90,13 +90,18 @@ async def get_earnings(
     dividend_stocks.sort(key=lambda x: x["annual_dividend"], reverse=True)
 
     # --- Estimate historical dividends earned per stock ---
-    # Uses avg_buy_price + yfinance price history to estimate purchase date
+    # Uses trade history (if available) or price-based estimation
     import asyncio
-    historical_dividends, estimated_purchase_dates = await _estimate_historical_dividends(holdings)
+    from backend.services.trade_report_parser import get_purchase_dates as get_real_purchase_dates
+
+    real_purchase_dates = await get_real_purchase_dates(db, session.user_id)
+    historical_dividends, estimated_purchase_dates = await _estimate_historical_dividends(holdings, real_purchase_dates)
 
     for stock in dividend_stocks:
         stock["total_earned_est"] = historical_dividends.get(stock["ticker"], 0)
-        stock["purchase_date"] = estimated_purchase_dates.get(stock["ticker"])
+        # Prefer real purchase date from trade history
+        stock["purchase_date"] = real_purchase_dates.get(stock["ticker"]) or estimated_purchase_dates.get(stock["ticker"])
+        stock["purchase_date_source"] = "trade_history" if stock["ticker"] in real_purchase_dates else "estimated"
 
     # --- Cost Basis Breakdown ---
     total_gain = total_portfolio_value - total_invested
@@ -183,17 +188,18 @@ def _estimate_payout_frequency(ticker: str) -> str:
         return "Annual"
 
 
-async def _estimate_historical_dividends(holdings) -> dict[str, float]:
+async def _estimate_historical_dividends(holdings, real_purchase_dates: dict[str, str] | None = None) -> tuple[dict[str, float], dict[str, str]]:
     """Estimate total dividends earned per stock since purchase.
 
-    Strategy: Use avg_buy_price + yfinance historical prices to estimate
-    the approximate purchase date (when stock was at that price).
-    Then sum all dividends from that date onwards × quantity.
+    Strategy:
+    1. If real_purchase_dates provided (from trade history), use those
+    2. Otherwise, estimate from avg_buy_price via yfinance price history
     """
     import asyncio
 
     results: dict[str, float] = {}
     purchase_dates_out: dict[str, str] = {}
+    real_dates = real_purchase_dates or {}
 
     def _fetch_dividends(ticker: str, quantity: float, avg_buy_price: float) -> tuple[str, float, str]:
         try:
@@ -210,40 +216,38 @@ async def _estimate_historical_dividends(holdings) -> dict[str, float]:
             if hist is None or hist.empty:
                 return ticker, 0.0, ""
 
-            # Estimate purchase date from avg_buy_price
-            # Find the FIRST date the stock was near the avg buy price
-            # (looking from oldest to newest for first occurrence)
-            if avg_buy_price > 0:
+            # Use real purchase date if available
+            if ticker in real_dates:
+                purchase_date = pd.Timestamp(real_dates[ticker], tz="Asia/Kolkata")
+                purchase_str = real_dates[ticker]
+            elif avg_buy_price > 0:
                 hist_sorted = hist.sort_index()
                 hist_sorted["diff"] = abs(hist_sorted["Close"] - avg_buy_price)
-                # Get dates where price was within 5% of avg buy price
                 near_price = hist_sorted[hist_sorted["diff"] < avg_buy_price * 0.05]
                 if not near_price.empty:
-                    # Take the first occurrence (earliest purchase date)
                     purchase_date = near_price.index[0]
                 else:
-                    # Fallback: closest single match
                     purchase_date = hist_sorted["diff"].idxmin()
+                purchase_str = purchase_date.strftime("%Y-%m-%d")
+                if purchase_date.tzinfo is None:
+                    purchase_date = purchase_date.tz_localize("Asia/Kolkata")
             else:
-                # No avg buy price, use 3 years back
                 purchase_date = hist.index[-1] - pd.Timedelta(days=3*365)
+                purchase_str = purchase_date.strftime("%Y-%m-%d")
 
-            purchase_str = purchase_date.strftime("%Y-%m-%d")
-
-            # Ensure timezone compatibility for dividend filtering
+            # Ensure timezone compatibility
             if dividends.index.tz is None:
                 dividends.index = dividends.index.tz_localize("Asia/Kolkata")
-            if purchase_date.tzinfo is None:
+            if hasattr(purchase_date, 'tzinfo') and purchase_date.tzinfo is None:
                 purchase_date = purchase_date.tz_localize("Asia/Kolkata")
 
             earned = dividends[dividends.index >= purchase_date]
             total = float(earned.sum()) * quantity
 
             return ticker, round(total, 2), purchase_str
-        except Exception as e:
+        except Exception:
             return ticker, 0.0, ""
 
-    # Run in thread pool
     loop = asyncio.get_event_loop()
     tasks = []
     for h in holdings:

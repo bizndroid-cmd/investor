@@ -396,3 +396,33 @@ class PredictionRecord(Base):
     created_at: Mapped[datetime] = mapped_column(
         sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
     )
+
+
+class TradeHistory(Base):
+    """Parsed trade history from uploaded broker reports."""
+
+    __tablename__ = "trade_history"
+    __table_args__ = (
+        sa.Index("idx_trade_history_user_ticker", "user_id", "ticker"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    ticker: Mapped[str] = mapped_column(String(30), nullable=False)
+    isin: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    trade_type: Mapped[str] = mapped_column(String(10), nullable=False)  # BUY or SELL
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    price: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    value: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    exchange: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    order_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    executed_at: Mapped[datetime | None] = mapped_column(
+        sa.TIMESTAMP(timezone=True), nullable=True
+    )
+    broker: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    source_file: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
+    )
