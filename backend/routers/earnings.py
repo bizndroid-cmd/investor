@@ -99,7 +99,6 @@ async def get_earnings(
     # Filter dividend_stocks to only those in trade history
     if real_purchase_dates:
         dividend_stocks = [s for s in dividend_stocks if s["ticker"] in real_purchase_dates]
-        non_paying = [s for s in non_paying if s["ticker"] in real_purchase_dates]
 
         historical_dividends, estimated_purchase_dates = await _estimate_historical_dividends(holdings, real_purchase_dates)
 
@@ -110,7 +109,6 @@ async def get_earnings(
     else:
         # No trade history — return empty dividend list, signal frontend to show upload prompt
         dividend_stocks = []
-        non_paying = []
 
     # --- Cost Basis Breakdown ---
     total_gain = total_portfolio_value - total_invested
