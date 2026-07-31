@@ -35,11 +35,16 @@ export async function apiFetch<T>(
   });
 
   if (!response.ok) {
-    // If unauthorized on a REST API call, clear tokens and force re-login
+    // If unauthorized on a REST API call, try refresh before forcing re-login
     if (response.status === 401) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-      window.location.reload();
+      // Don't immediately redirect — let the caller handle it
+      // Only force logout if this isn't a background/mutation call
+      const isBackgroundCall = options.method === "POST" || options.method === "PUT" || options.method === "DELETE";
+      if (!isBackgroundCall) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        window.location.reload();
+      }
     }
     let body: unknown;
     try {

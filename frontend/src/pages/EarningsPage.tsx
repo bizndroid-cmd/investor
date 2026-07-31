@@ -413,115 +413,175 @@ function DividendListCard({ data }: { data: EarningsData }) {
 // TRADE HISTORY IMPORT
 // ============================================================
 function TradeImportCard() {
-  const { data: tradeData } = useQuery({
+  const { data: tradeData, refetch: refetchTrades } = useQuery({
     queryKey: ["trade-history"],
     queryFn: () => apiFetch<any>("/telegram/trade-history"),
     staleTime: 60_000,
   });
 
+  const [showProgress, setShowProgress] = useState(false);
+  const [progressSteps, setProgressSteps] = useState<Array<{ text: string; done: boolean }>>([]);
+
   const pollMutation = useMutation({
-    mutationFn: () => apiFetch<any>("/telegram/poll", { method: "POST" }),
+    mutationFn: async () => {
+      setShowProgress(true);
+      setProgressSteps([
+        { text: "Connecting to Telegram bot...", done: false },
+        { text: "Checking for new documents...", done: false },
+        { text: "Parsing trade report...", done: false },
+        { text: "Storing trades in database...", done: false },
+      ]);
+
+      // Step 1
+      await new Promise((r) => setTimeout(r, 400));
+      setProgressSteps((prev) => prev.map((s, i) => i === 0 ? { ...s, done: true } : s));
+
+      // Step 2
+      await new Promise((r) => setTimeout(r, 300));
+      setProgressSteps((prev) => prev.map((s, i) => i <= 1 ? { ...s, done: true } : s));
+
+      // Actual API call
+      const result = await apiFetch<any>("/telegram/poll", { method: "POST" });
+
+      // Step 3 & 4
+      setProgressSteps((prev) => prev.map((s) => ({ ...s, done: true })));
+      await new Promise((r) => setTimeout(r, 500));
+
+      return result;
+    },
     onSuccess: (data) => {
       if (data.processed > 0) {
         showToast({ title: `Imported ${data.processed} report(s)`, variant: "success" });
       } else {
-        showToast({ title: "No new documents found", variant: "default" });
+        showToast({ title: "No new documents found in Telegram", variant: "default" });
       }
+      refetchTrades();
+      setTimeout(() => setShowProgress(false), 1500);
+    },
+    onError: (error: any) => {
+      const msg = error?.body?.detail || error?.message || "Sync failed";
+      showToast({ title: typeof msg === "string" ? msg : "Sync failed — try again", variant: "error" });
+      setShowProgress(false);
     },
   });
 
   const hasTradeData = tradeData?.has_data;
 
   return (
-    <div className="bento-card">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-bold flex items-center gap-2">
-          <Upload className="h-4 w-4 text-blue-500" />
-          Trade History Import
-        </h3>
-        {hasTradeData && (
-          <span className="badge badge-success">
-            <CheckCircle2 className="h-2.5 w-2.5 mr-1" />
-            {tradeData.total_trades} trades loaded
-          </span>
-        )}
-      </div>
-
-      {!hasTradeData ? (
-        <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-5">
-          <div className="flex items-start gap-4">
-            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-              <Send className="h-5 w-5 text-primary" />
+    <>
+      {/* Progress overlay */}
+      {showProgress && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-card border rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-scale-in">
+            <h4 className="text-sm font-bold mb-4 flex items-center gap-2">
+              <RefreshCw className={`h-4 w-4 text-primary ${pollMutation.isPending ? "animate-spin" : ""}`} />
+              Syncing from Telegram
+            </h4>
+            <div className="space-y-3">
+              {progressSteps.map((step, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  {step.done ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                  ) : (
+                    <div className="h-4 w-4 rounded-full border-2 border-primary/30 border-t-primary animate-spin shrink-0" />
+                  )}
+                  <span className={`text-xs ${step.done ? "text-foreground" : "text-muted-foreground"}`}>
+                    {step.text}
+                  </span>
+                </div>
+              ))}
             </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium">Upload your broker trade report via Telegram</p>
-              <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-                This enables accurate lifetime dividend calculations using your actual purchase dates.
-              </p>
-              <ol className="text-xs text-muted-foreground mt-3 space-y-1.5 list-decimal list-inside">
-                <li>Download <strong>Order History</strong> from Groww (Profile → Reports → Order History → XLSX)</li>
-                <li>Send the file to your <strong>Telegram bot</strong> in the chat window</li>
-                <li>Click <strong>"Sync from Telegram"</strong> below to pull and parse it</li>
-              </ol>
-              <p className="text-[10px] text-muted-foreground mt-3 italic">
-                Supports: XLSX, CSV from any broker (Groww, Zerodha, Angel One, Upstox, etc.)
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => pollMutation.mutate()}
-            disabled={pollMutation.isPending}
-            className="btn-primary mt-4 text-xs"
-          >
-            {pollMutation.isPending ? (
-              <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-            ) : (
-              <Send className="h-3.5 w-3.5 mr-1.5" />
+            {!pollMutation.isPending && (
+              <button onClick={() => setShowProgress(false)} className="btn-ghost text-xs mt-4 w-full">
+                Close
+              </button>
             )}
-            Sync from Telegram
-          </button>
+          </div>
         </div>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">
-              {tradeData.tickers} stocks · {tradeData.total_trades} trades · via {tradeData.broker || "broker"}
+      )}
+
+      <div className="bento-card">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-bold flex items-center gap-2">
+            <Upload className="h-4 w-4 text-blue-500" />
+            Trade History Import
+          </h3>
+          {hasTradeData && (
+            <span className="badge badge-success">
+              <CheckCircle2 className="h-2.5 w-2.5 mr-1" />
+              {tradeData.total_trades} trades loaded
             </span>
+          )}
+        </div>
+
+        {!hasTradeData ? (
+          <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-5">
+            <div className="flex items-start gap-4">
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <Send className="h-5 w-5 text-primary" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium">Upload your broker trade report via Telegram</p>
+                <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                  This enables accurate lifetime dividend calculations using your actual purchase dates.
+                </p>
+                <ol className="text-xs text-muted-foreground mt-3 space-y-1.5 list-decimal list-inside">
+                  <li>Download <strong>Order History</strong> from Groww (Profile → Reports → Order History → XLSX)</li>
+                  <li>Send the file to your <strong>Telegram bot</strong> in the chat window</li>
+                  <li>Click <strong>"Sync from Telegram"</strong> below to pull and parse it</li>
+                </ol>
+                <p className="text-[10px] text-muted-foreground mt-3 italic">
+                  Supports: XLSX, CSV from any broker (Groww, Zerodha, Angel One, Upstox, etc.)
+                </p>
+              </div>
+            </div>
+
             <button
               onClick={() => pollMutation.mutate()}
               disabled={pollMutation.isPending}
-              className="btn-ghost text-xs"
+              className="btn-primary mt-4 text-xs"
             >
-              {pollMutation.isPending ? (
-                <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3 w-3 mr-1" />
-              )}
-              Re-sync
+              <Send className="h-3.5 w-3.5 mr-1.5" />
+              Sync from Telegram
             </button>
           </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">
+                {tradeData.tickers} stocks · {tradeData.total_trades} trades · via {tradeData.broker || "broker"}
+              </span>
+              <button
+                onClick={() => pollMutation.mutate()}
+                disabled={pollMutation.isPending}
+                className="btn-ghost text-xs"
+              >
+                <RefreshCw className={`h-3 w-3 mr-1 ${pollMutation.isPending ? "animate-spin" : ""}`} />
+                Re-sync
+              </button>
+            </div>
 
-          {/* Show first purchase dates */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-            {(tradeData.summary || []).slice(0, 8).map((s: any) => (
-              <div key={s.ticker} className="rounded-lg bg-secondary/30 px-2.5 py-2 text-xs">
-                <span className="font-mono font-semibold">{s.ticker}</span>
-                {s.first_purchase && (
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    Since {new Date(s.first_purchase).toLocaleDateString([], { month: "short", year: "numeric" })}
-                  </p>
-                )}
-              </div>
-            ))}
+            {/* Show first purchase dates */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+              {(tradeData.summary || []).slice(0, 8).map((s: any) => (
+                <div key={s.ticker} className="rounded-lg bg-secondary/30 px-2.5 py-2 text-xs">
+                  <span className="font-mono font-semibold">{s.ticker}</span>
+                  {s.first_purchase && (
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Since {new Date(s.first_purchase).toLocaleDateString([], { month: "short", year: "numeric" })}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <p className="text-[10px] text-muted-foreground italic">
+              Send updated reports to Telegram anytime to refresh. Dividend calculations use these dates.
+            </p>
           </div>
-
-          <p className="text-[10px] text-muted-foreground italic">
-            Send updated reports to Telegram anytime to refresh. Dividend calculations use these dates.
-          </p>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
 }
 
