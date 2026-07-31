@@ -145,18 +145,18 @@ function SummaryRow({ data }: { data: EarningsData }) {
         color="text-blue-500"
       />
       <StatCard
-        label="Portfolio Value"
-        value={`₹${Math.round(s.total_portfolio_value).toLocaleString()}`}
-        sub={`₹${Math.round(s.total_invested).toLocaleString()} invested`}
+        label="Lifetime Dividend Earnings"
+        value={`₹${((s as any).total_lifetime_dividends || 0).toLocaleString()}`}
+        sub="Total received since purchase"
         icon={PiggyBank}
         color="text-purple-500"
       />
       <StatCard
-        label="Non-Paying Stocks"
-        value={`${s.stocks_not_paying}`}
-        sub="No dividend income"
+        label="Investment Summary"
+        value={`₹${Math.round(s.total_invested).toLocaleString()}`}
+        sub={`Div: ₹${((s as any).total_lifetime_dividends || 0).toLocaleString()} · Returns: ${((s as any).returns_pct || 0)}%`}
         icon={BarChart3}
-        color="text-muted-foreground"
+        color="text-emerald-500"
       />
     </div>
   );

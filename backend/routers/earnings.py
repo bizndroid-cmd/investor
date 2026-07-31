@@ -129,6 +129,9 @@ async def get_earnings(
     paying_stocks = [s for s in dividend_stocks if s["annual_dividend"] > 0]
     non_paying = [s for s in dividend_stocks if s["annual_dividend"] == 0]
 
+    # Lifetime earned total
+    total_lifetime_dividends = sum(s.get("total_earned_est", 0) for s in dividend_stocks)
+
     return {
         "has_data": True,
         "has_trade_history": bool(real_purchase_dates),
@@ -143,6 +146,8 @@ async def get_earnings(
             "effective_yield_pct": round(float(effective_yield), 2),
             "stocks_paying_dividends": len(paying_stocks),
             "stocks_not_paying": len(non_paying),
+            "total_lifetime_dividends": round(total_lifetime_dividends, 2),
+            "returns_pct": round(float(gain_pct), 2),
         },
 
         # Cost Basis
