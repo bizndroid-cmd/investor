@@ -310,6 +310,7 @@ function DividendListCard({ data }: { data: EarningsData }) {
   const [showNonPaying, setShowNonPaying] = useState(false);
   const paying = data.dividend_stocks || [];
   const nonPaying = data.non_paying_stocks || [];
+  const hasTradeHistory = (data as any).has_trade_history;
 
   return (
     <div className="bento-card">
@@ -318,9 +319,17 @@ function DividendListCard({ data }: { data: EarningsData }) {
         Dividend Earnings by Stock
       </h3>
 
-      {paying.length === 0 ? (
+      {!hasTradeHistory ? (
+        <div className="text-center py-8">
+          <Upload className="h-8 w-8 mx-auto mb-3 text-muted-foreground/30" />
+          <p className="text-sm text-muted-foreground">Upload trade history to see dividend earnings</p>
+          <p className="text-xs text-muted-foreground/70 mt-1">
+            Send your broker order report via Telegram, then sync above
+          </p>
+        </div>
+      ) : paying.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-6">
-          No dividend-paying stocks in your portfolio
+          No dividend-paying stocks in trade history
         </p>
       ) : (
         <div className="overflow-x-auto">

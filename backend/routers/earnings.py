@@ -90,18 +90,27 @@ async def get_earnings(
     dividend_stocks.sort(key=lambda x: x["annual_dividend"], reverse=True)
 
     # --- Estimate historical dividends earned per stock ---
-    # Uses trade history (if available) or price-based estimation
+    # Only calculate for stocks with trade history (real purchase dates)
     import asyncio
     from backend.services.trade_report_parser import get_purchase_dates as get_real_purchase_dates
 
     real_purchase_dates = await get_real_purchase_dates(db, session.user_id)
-    historical_dividends, estimated_purchase_dates = await _estimate_historical_dividends(holdings, real_purchase_dates)
 
-    for stock in dividend_stocks:
-        stock["total_earned_est"] = historical_dividends.get(stock["ticker"], 0)
-        # Prefer real purchase date from trade history
-        stock["purchase_date"] = real_purchase_dates.get(stock["ticker"]) or estimated_purchase_dates.get(stock["ticker"])
-        stock["purchase_date_source"] = "trade_history" if stock["ticker"] in real_purchase_dates else "estimated"
+    # Filter dividend_stocks to only those in trade history
+    if real_purchase_dates:
+        dividend_stocks = [s for s in dividend_stocks if s["ticker"] in real_purchase_dates]
+        non_paying = [s for s in non_paying if s["ticker"] in real_purchase_dates]
+
+        historical_dividends, estimated_purchase_dates = await _estimate_historical_dividends(holdings, real_purchase_dates)
+
+        for stock in dividend_stocks:
+            stock["total_earned_est"] = historical_dividends.get(stock["ticker"], 0)
+            stock["purchase_date"] = real_purchase_dates.get(stock["ticker"]) or estimated_purchase_dates.get(stock["ticker"])
+            stock["purchase_date_source"] = "trade_history"
+    else:
+        # No trade history — return empty dividend list, signal frontend to show upload prompt
+        dividend_stocks = []
+        non_paying = []
 
     # --- Cost Basis Breakdown ---
     total_gain = total_portfolio_value - total_invested
@@ -124,6 +133,7 @@ async def get_earnings(
 
     return {
         "has_data": True,
+        "has_trade_history": bool(real_purchase_dates),
         "snapshot_date": latest_date.isoformat(),
 
         # Summary
