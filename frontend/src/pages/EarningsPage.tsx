@@ -154,7 +154,7 @@ function SummaryRow({ data }: { data: EarningsData }) {
       <StatCard
         label="Investment Summary"
         value={`₹${Math.round(s.total_invested).toLocaleString()}`}
-        sub={`Div: ₹${((s as any).total_lifetime_dividends || 0).toLocaleString()} · Returns: ${((s as any).returns_pct || 0)}%`}
+        sub={`Capital gains: ₹${((data.cost_basis?.unrealized_gain) || 0).toLocaleString()} while holding`}
         icon={BarChart3}
         color="text-emerald-500"
       />
@@ -215,6 +215,14 @@ function CostBasisCard({ data }: { data: EarningsData }) {
         <Row label="Total Invested" value={`₹${cb.total_invested.toLocaleString()}`} />
         <Row label="Current Value" value={`₹${cb.current_value.toLocaleString()}`} />
         <Row label="Unrealized Gain" value={`₹${cb.unrealized_gain.toLocaleString()} (${cb.gain_pct}%)`} valueClass={gainColor} />
+        <Row label="Dividends Received" value={`₹${((data.summary as any)?.total_lifetime_dividends || 0).toLocaleString()}`} valueClass="text-emerald-500" />
+        <div className="pt-2 border-t border-border">
+          <Row
+            label="Total Earnings (Gains + Dividends)"
+            value={`₹${(cb.unrealized_gain + ((data.summary as any)?.total_lifetime_dividends || 0)).toLocaleString()}`}
+            valueClass="text-emerald-500 font-bold"
+          />
+        </div>
       </div>
     </div>
   );
@@ -224,36 +232,47 @@ function CostBasisCard({ data }: { data: EarningsData }) {
 // YIELD vs BENCHMARKS
 // ============================================================
 function YieldComparisonCard({ data }: { data: EarningsData }) {
-  const yc = data.yield_comparison!;
+  const s = data.summary!;
+  const invested = s.total_invested;
 
-  const benchmarks = [
-    { label: "Your Portfolio", value: yc.portfolio_yield, color: "bg-emerald-500" },
-    { label: "SBI FD (1yr)", value: yc.fd_rate, color: "bg-blue-500" },
-    { label: "PPF", value: yc.ppf_rate, color: "bg-indigo-500" },
-    { label: "Savings Account", value: yc.savings_rate, color: "bg-gray-400" },
-    { label: "Nifty 50 Div Yield", value: yc.nifty_dividend_yield, color: "bg-amber-500" },
+  // Simulate 3-year returns on same invested amount across instruments
+  // Using approximate annualized rates
+  const alternatives = [
+    { label: "Your Equity Portfolio", value: data.cost_basis!.current_value, rate: data.cost_basis!.gain_pct, color: "bg-emerald-500", highlight: true },
+    { label: "SBI FD (7% compounded)", value: Math.round(invested * Math.pow(1.07, 3)), rate: 22.5, color: "bg-blue-500", highlight: false },
+    { label: "PPF (7.1% compounded)", value: Math.round(invested * Math.pow(1.071, 3)), rate: 22.9, color: "bg-indigo-500", highlight: false },
+    { label: "Savings Account (3.5%)", value: Math.round(invested * Math.pow(1.035, 3)), rate: 10.9, color: "bg-gray-400", highlight: false },
+    { label: "Gold (12% avg 3yr)", value: Math.round(invested * Math.pow(1.12, 3)), rate: 40.5, color: "bg-amber-500", highlight: false },
+    { label: "Nifty 50 Index (14% avg)", value: Math.round(invested * Math.pow(1.14, 3)), rate: 48.2, color: "bg-orange-500", highlight: false },
   ];
 
-  const maxVal = Math.max(...benchmarks.map((b) => b.value));
+  const maxVal = Math.max(...alternatives.map((a) => a.value));
 
   return (
     <div className="bento-card">
-      <h3 className="text-sm font-bold flex items-center gap-2 mb-4">
+      <h3 className="text-sm font-bold flex items-center gap-2 mb-1">
         <Landmark className="h-4 w-4 text-blue-500" />
-        Yield vs Alternatives
+        What If You Invested ₹{Math.round(invested).toLocaleString()} Elsewhere?
       </h3>
+      <p className="text-[10px] text-muted-foreground mb-4">
+        Comparing 3-year hypothetical returns on same capital
+      </p>
 
       <div className="space-y-3">
-        {benchmarks.map((b) => (
-          <div key={b.label}>
+        {alternatives.map((a) => (
+          <div key={a.label}>
             <div className="flex justify-between text-xs mb-1">
-              <span className="text-muted-foreground">{b.label}</span>
-              <span className="font-semibold">{b.value}%</span>
+              <span className={a.highlight ? "font-semibold text-foreground" : "text-muted-foreground"}>
+                {a.label}
+              </span>
+              <span className={`font-semibold ${a.highlight ? "text-emerald-500" : ""}`}>
+                ₹{a.value.toLocaleString()}
+              </span>
             </div>
             <div className="h-2.5 rounded-full bg-muted overflow-hidden">
               <div
-                className={`h-full rounded-full ${b.color} transition-all`}
-                style={{ width: `${(b.value / maxVal) * 100}%` }}
+                className={`h-full rounded-full ${a.color} transition-all`}
+                style={{ width: `${(a.value / maxVal) * 100}%` }}
               />
             </div>
           </div>
@@ -261,7 +280,7 @@ function YieldComparisonCard({ data }: { data: EarningsData }) {
       </div>
 
       <p className="text-[10px] text-muted-foreground mt-3 pt-2 border-t border-border">
-        Dividend yield is just one component. Total returns = capital gains + dividends.
+        Equity returns include unrealized capital gains. FD/PPF rates are pre-tax. Past performance ≠ future results.
       </p>
     </div>
   );
