@@ -21,6 +21,11 @@ TELEGRAM_API = f"https://api.telegram.org/bot{settings.telegram_bot_token}"
 SUPPORTED_EXTENSIONS = {".xlsx", ".xls", ".csv", ".pdf"}
 
 
+def _escape_html(text: str) -> str:
+    """Escape HTML special chars for Telegram messages."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 async def process_document_update(update: dict, user_id: UUID) -> str | None:
     """Process a Telegram update containing a document.
 
@@ -86,7 +91,7 @@ async def process_document_update(update: dict, user_id: UUID) -> str | None:
 
         summary = (
             f"✅ <b>Trade Report Imported</b>\n\n"
-            f"📄 File: {file_name}\n"
+            f"📄 File: {_escape_html(file_name)}\n"
             f"🏦 Broker: {broker or 'Unknown'}\n"
             f"📊 Trades: {stored} ({buy_count} buys, {sell_count} sells)\n"
             f"📈 Stocks: {len(tickers)} unique\n"
@@ -97,13 +102,13 @@ async def process_document_update(update: dict, user_id: UUID) -> str | None:
         if len(tickers) > 15:
             summary += f" +{len(tickers) - 15} more"
 
-        summary += "\n\n💡 <i>Dividend earnings will now use actual purchase dates.</i>"
+        summary += "\n\n💡 Dividend earnings will now use actual purchase dates."
 
         return summary
 
     except Exception as e:
         logger.error("Trade report parsing failed: %s", str(e))
-        return f"❌ Error parsing file: {str(e)[:100]}"
+        return f"❌ Error parsing file: {_escape_html(str(e)[:100])}"
 
 
 async def _download_telegram_file(file_id: str) -> bytes | None:

@@ -417,7 +417,7 @@ class TradeHistory(Base):
     price: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     value: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     exchange: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    order_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    order_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     executed_at: Mapped[datetime | None] = mapped_column(
         sa.TIMESTAMP(timezone=True), nullable=True
     )

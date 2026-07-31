@@ -27,7 +27,7 @@ def upgrade() -> None:
         sa.Column("price", sa.Numeric(18, 6), nullable=False),
         sa.Column("value", sa.Numeric(18, 6), nullable=True),
         sa.Column("exchange", sa.String(10), nullable=True),
-        sa.Column("order_id", sa.String(50), nullable=True),
+        sa.Column("order_id", sa.String(100), nullable=True),
         sa.Column("executed_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("broker", sa.String(30), nullable=True),
         sa.Column("source_file", sa.String(100), nullable=True),
