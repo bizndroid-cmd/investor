@@ -9,6 +9,7 @@ import { ComparisonPage } from "@/pages/ComparisonPage";
 import { BriefingPage } from "@/pages/BriefingPage";
 import { DetailedNewsPage } from "@/pages/DetailedNewsPage";
 import { EarningsPage } from "@/pages/EarningsPage";
+import { AttachmentsPage } from "@/pages/AttachmentsPage";
 import { PredictionsPage } from "@/pages/PredictionsPage";
 import { InsightsPage } from "@/pages/InsightsPage";
 import { ResearchPage } from "@/pages/ResearchPage";
@@ -46,6 +47,7 @@ function App() {
           <Route path="/comparison" element={<ComparisonPage />} />
           <Route path="/brokers" element={<BrokersPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/attachments" element={<AttachmentsPage />} />
           <Route path="/nerd-stats" element={<NerdStatsPage />} />
         </Route>
       </Routes>

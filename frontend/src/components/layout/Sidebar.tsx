@@ -15,6 +15,7 @@ import {
   Zap,
   FileText,
   Wallet,
+  Paperclip,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -30,6 +31,7 @@ const navItems = [
   { to: "/comparison", label: "Comparison", icon: GitCompare },
   { to: "/brokers", label: "Brokers", icon: Link2 },
   { to: "/alerts", label: "Alerts", icon: Bell },
+  { to: "/attachments", label: "Attachments", icon: Paperclip },
   { to: "/nerd-stats", label: "Nerd Stats", icon: Terminal },
 ];
 

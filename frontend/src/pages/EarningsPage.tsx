@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/api/client";
 import {
   Wallet, TrendingUp, PiggyBank, BarChart3,
@@ -431,70 +431,79 @@ function DividendListCard({ data }: { data: EarningsData }) {
 // TRADE HISTORY IMPORT
 // ============================================================
 function TradeImportCard() {
+  const queryClient = useQueryClient();
   const { data: tradeData, refetch: refetchTrades } = useQuery({
     queryKey: ["trade-history"],
     queryFn: () => apiFetch<any>("/telegram/trade-history"),
     staleTime: 60_000,
   });
 
+  const { data: attachments } = useQuery({
+    queryKey: ["attachments"],
+    queryFn: () => apiFetch<any[]>("/telegram/attachments"),
+    staleTime: 30_000,
+  });
+
   const [showProgress, setShowProgress] = useState(false);
   const [progressSteps, setProgressSteps] = useState<Array<{ text: string; done: boolean; error?: boolean }>>([]);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
 
-  const pollMutation = useMutation({
-    mutationFn: async () => {
+  // Sync from Telegram (pull new docs)
+  const syncMutation = useMutation({
+    mutationFn: () => apiFetch<any>("/telegram/sync", { method: "POST" }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["attachments"] });
+      if (data.new_attachments > 0) {
+        setSyncResult(`Found ${data.new_attachments} new document(s). Select one to process.`);
+        setShowPicker(true);
+      } else {
+        setSyncResult("No new documents in Telegram. Send a file to the bot first.");
+      }
+    },
+  });
+
+  // Process a specific attachment
+  const processMutation = useMutation({
+    mutationFn: async (attachmentId: string) => {
       setShowProgress(true);
       setSyncResult(null);
+      setShowPicker(false);
       setProgressSteps([
-        { text: "Connecting to Telegram bot...", done: false },
-        { text: "Checking for new documents...", done: false },
-        { text: "Parsing trade report...", done: false },
-        { text: "Storing trades in database...", done: false },
+        { text: "Downloading file from Telegram...", done: false },
+        { text: "Parsing trade data...", done: false },
+        { text: "Storing in database...", done: false },
+        { text: "Updating dividend calculations...", done: false },
       ]);
 
-      // Step 1
       await new Promise((r) => setTimeout(r, 400));
       setProgressSteps((prev) => prev.map((s, i) => i === 0 ? { ...s, done: true } : s));
 
-      // Step 2
-      await new Promise((r) => setTimeout(r, 300));
-      setProgressSteps((prev) => prev.map((s, i) => i <= 1 ? { ...s, done: true } : s));
+      const result = await apiFetch<any>(`/telegram/attachments/${attachmentId}/process`, { method: "POST" });
 
-      // Actual API call
-      const result = await apiFetch<any>("/telegram/poll", { method: "POST" });
-
-      if (result.processed > 0) {
-        // Success
+      if (result.status === "ok") {
         setProgressSteps((prev) => prev.map((s) => ({ ...s, done: true })));
-        setSyncResult(`✅ Imported ${result.processed} report(s) successfully`);
+        setSyncResult(`✅ Imported ${result.records_imported} trades (${result.buy_count} buys, ${result.tickers?.length} stocks)`);
       } else {
-        // No documents found
-        setProgressSteps((prev) => prev.map((s, i) => {
-          if (i <= 1) return { ...s, done: true };
-          return { ...s, done: true, error: true, text: i === 2 ? "No new documents found in Telegram" : "Nothing to store" };
-        }));
-        setSyncResult("No documents found. Make sure you sent the file to the Telegram bot BEFORE clicking sync.");
+        setProgressSteps((prev) => prev.map((s) => s.done ? s : { ...s, done: true, error: true }));
+        setSyncResult(`❌ ${result.message}`);
       }
 
-      await new Promise((r) => setTimeout(r, 300));
       return result;
     },
-    onSuccess: (data) => {
-      if (data.processed > 0) {
-        refetchTrades();
-      }
+    onSuccess: () => {
+      refetchTrades();
+      queryClient.invalidateQueries({ queryKey: ["attachments"] });
+      queryClient.invalidateQueries({ queryKey: ["earnings"] });
     },
     onError: (error: any) => {
-      const msg = error?.body?.detail || error?.message || "Sync failed";
-      setProgressSteps((prev) => prev.map((s) => {
-        if (s.done) return s;
-        return { ...s, done: true, error: true, text: "Failed" };
-      }));
-      setSyncResult(`❌ ${typeof msg === "string" ? msg : "Sync failed. Check your login session and try again."}`);
+      setProgressSteps((prev) => prev.map((s) => s.done ? s : { ...s, done: true, error: true, text: "Failed" }));
+      setSyncResult(`❌ ${error?.message || "Processing failed"}`);
     },
   });
 
   const hasTradeData = tradeData?.has_data;
+  const pendingAttachments = (attachments || []).filter((a: any) => a.status === "pending");
 
   return (
     <>
@@ -503,8 +512,8 @@ function TradeImportCard() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-card border rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-scale-in">
             <h4 className="text-sm font-bold mb-4 flex items-center gap-2">
-              <RefreshCw className={`h-4 w-4 text-primary ${pollMutation.isPending ? "animate-spin" : ""}`} />
-              Syncing from Telegram
+              <RefreshCw className={`h-4 w-4 text-primary ${processMutation.isPending ? "animate-spin" : ""}`} />
+              Processing Document
             </h4>
             <div className="space-y-3">
               {progressSteps.map((step, i) => (
@@ -524,15 +533,12 @@ function TradeImportCard() {
                 </div>
               ))}
             </div>
-
-            {/* Result message */}
             {syncResult && (
               <div className={`mt-4 pt-3 border-t text-xs ${syncResult.startsWith("✅") ? "text-emerald-500" : "text-muted-foreground"}`}>
                 {syncResult}
               </div>
             )}
-
-            {!pollMutation.isPending && (
+            {!processMutation.isPending && (
               <button onClick={() => setShowProgress(false)} className="btn-ghost text-xs mt-4 w-full">
                 Close
               </button>
@@ -555,54 +561,81 @@ function TradeImportCard() {
           )}
         </div>
 
-        {!hasTradeData ? (
+        {!hasTradeData && !showPicker && (
           <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-5">
             <div className="flex items-start gap-4">
               <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                 <Send className="h-5 w-5 text-primary" />
               </div>
               <div className="flex-1">
-                <p className="text-sm font-medium">Upload your broker trade report via Telegram</p>
-                <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-                  This enables accurate lifetime dividend calculations using your actual purchase dates.
-                </p>
+                <p className="text-sm font-medium">Import trade report for accurate dividend calculations</p>
                 <ol className="text-xs text-muted-foreground mt-3 space-y-1.5 list-decimal list-inside">
-                  <li>Download <strong>Order History</strong> from Groww (Profile → Reports → Order History → XLSX)</li>
-                  <li>Send the file to your <strong>Telegram bot</strong> in the chat window</li>
-                  <li>Click <strong>"Sync from Telegram"</strong> below to pull and parse it</li>
+                  <li>Send your broker's Order History (XLSX/CSV) to Telegram bot</li>
+                  <li>Click <strong>"Pull New Documents"</strong> to fetch it</li>
+                  <li>Select the document to process</li>
                 </ol>
-                <p className="text-[10px] text-muted-foreground mt-3 italic">
-                  Supports: XLSX, CSV from any broker (Groww, Zerodha, Angel One, Upstox, etc.)
-                </p>
               </div>
             </div>
-
             <button
-              onClick={() => pollMutation.mutate()}
-              disabled={pollMutation.isPending}
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending}
               className="btn-primary mt-4 text-xs"
             >
-              <Send className="h-3.5 w-3.5 mr-1.5" />
-              Sync from Telegram
+              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+              Pull New Documents
             </button>
+            {syncResult && !showPicker && (
+              <p className="text-xs text-muted-foreground mt-2">{syncResult}</p>
+            )}
           </div>
-        ) : (
+        )}
+
+        {/* Document picker */}
+        {(showPicker || pendingAttachments.length > 0) && !hasTradeData && (
+          <div className="mt-3 space-y-2 animate-fade-in">
+            <p className="text-xs font-medium">Select a document to process:</p>
+            {pendingAttachments.map((a: any) => (
+              <button
+                key={a.id}
+                onClick={() => processMutation.mutate(a.id)}
+                disabled={processMutation.isPending}
+                className="w-full flex items-center justify-between p-3 rounded-lg border hover:border-primary/30 hover:bg-primary/5 transition-colors text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <Upload className="h-4 w-4 text-primary" />
+                  <div>
+                    <p className="text-xs font-medium">{a.file_name}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {a.file_size ? `${(a.file_size / 1024).toFixed(0)} KB` : ""} · Received {new Date(a.received_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] text-primary font-medium">Process</span>
+              </button>
+            ))}
+            {pendingAttachments.length === 0 && (
+              <p className="text-xs text-muted-foreground">No pending documents. Send one via Telegram first.</p>
+            )}
+          </div>
+        )}
+
+        {/* Has trade data — show summary + option to process more */}
+        {hasTradeData && (
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">
                 {tradeData.tickers} stocks · {tradeData.total_trades} trades · via {tradeData.broker || "broker"}
               </span>
               <button
-                onClick={() => pollMutation.mutate()}
-                disabled={pollMutation.isPending}
+                onClick={() => { syncMutation.mutate(); setShowPicker(true); }}
+                disabled={syncMutation.isPending}
                 className="btn-ghost text-xs"
               >
-                <RefreshCw className={`h-3 w-3 mr-1 ${pollMutation.isPending ? "animate-spin" : ""}`} />
-                Re-sync
+                <RefreshCw className={`h-3 w-3 mr-1 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+                Process New Doc
               </button>
             </div>
 
-            {/* Show first purchase dates */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
               {(tradeData.summary || []).slice(0, 8).map((s: any) => (
                 <div key={s.ticker} className="rounded-lg bg-secondary/30 px-2.5 py-2 text-xs">
@@ -616,9 +649,23 @@ function TradeImportCard() {
               ))}
             </div>
 
-            <p className="text-[10px] text-muted-foreground italic">
-              Send updated reports to Telegram anytime to refresh. Dividend calculations use these dates.
-            </p>
+            {/* Show picker if pending docs exist */}
+            {showPicker && pendingAttachments.length > 0 && (
+              <div className="pt-3 border-t space-y-2 animate-fade-in">
+                <p className="text-xs font-medium">New documents available:</p>
+                {pendingAttachments.map((a: any) => (
+                  <button
+                    key={a.id}
+                    onClick={() => processMutation.mutate(a.id)}
+                    disabled={processMutation.isPending}
+                    className="w-full flex items-center justify-between p-2.5 rounded-lg border hover:border-primary/30 transition-colors text-left"
+                  >
+                    <span className="text-xs">{a.file_name}</span>
+                    <span className="text-[10px] text-primary font-medium">Process</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

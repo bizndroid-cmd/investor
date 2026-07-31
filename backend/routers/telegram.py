@@ -1,25 +1,28 @@
-"""Telegram webhook/polling router for handling document uploads.
+"""Telegram router — attachment management + document processing.
 
 Endpoints:
-- POST /telegram/webhook — receives Telegram updates (for webhook mode)
-- POST /telegram/poll — manually trigger polling for new messages
-- GET /telegram/trade-history — get parsed trade history
+- POST /telegram/sync — poll Telegram for new documents, store in attachments table
+- GET /telegram/attachments — list all attachments
+- POST /telegram/attachments/{id}/process — parse a specific attachment into trade history
+- GET /telegram/trade-history — trade history summary
+- GET /telegram/purchase-dates — earliest buy date per ticker
 """
 
 from __future__ import annotations
 
 import logging
-from uuid import UUID
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
 
 import httpx
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select, func
+from fastapi import APIRouter, Depends
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config import settings
 from backend.database import get_db
 from backend.models.domain import Session
-from backend.models.orm import TradeHistory
+from backend.models.orm import Attachment, TradeHistory
 from backend.routers.auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -27,18 +30,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/telegram", tags=["telegram"])
 
 TELEGRAM_API = f"https://api.telegram.org/bot{settings.telegram_bot_token}"
+SUPPORTED_EXTENSIONS = {".xlsx", ".xls", ".csv"}
 
 
-@router.post("/poll")
-async def poll_for_documents(
+@router.post("/sync")
+async def sync_attachments(
     session: Session = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Poll Telegram for recent document uploads and process them.
-
-    This is a manual trigger — call this after sending a document to the bot.
-    """
-    from backend.services.telegram_document_handler import process_document_update
+    """Poll Telegram for new document uploads and store them in attachments table."""
     from backend.services import telegram_service
 
     if not telegram_service.is_configured():
@@ -46,51 +46,190 @@ async def poll_for_documents(
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(f"{TELEGRAM_API}/getUpdates", params={"limit": 10})
+            resp = await client.get(f"{TELEGRAM_API}/getUpdates", params={"limit": 50})
             if resp.status_code != 200:
-                return {"status": "error", "message": "Failed to fetch updates"}
+                return {"status": "error", "message": "Failed to reach Telegram"}
 
             updates = resp.json().get("result", [])
 
-        # Process document uploads
-        processed = 0
-        results = []
+        allowed = telegram_service._get_allowed_chat_ids()
+        new_count = 0
 
         for update in updates:
             message = update.get("message", {})
             chat_id = str(message.get("chat", {}).get("id", ""))
 
-            # Security: only process from allowed chats
-            allowed = telegram_service._get_allowed_chat_ids()
             if chat_id not in allowed:
                 continue
 
-            if "document" in message:
-                result = await process_document_update(update, session.user_id)
-                if result:
-                    processed += 1
-                    results.append(result)
-                    # Send confirmation back to Telegram
-                    await telegram_service.send_message(chat_id, result)
+            document = message.get("document")
+            if not document:
+                continue
+
+            file_name = document.get("file_name", "")
+            file_id = document.get("file_id", "")
+            file_size = document.get("file_size", 0)
+            mime_type = document.get("mime_type", "")
+
+            # Check extension
+            ext = "." + file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+            if ext not in SUPPORTED_EXTENSIONS:
+                continue
+
+            # Check if already stored (by file_id)
+            existing = await db.execute(
+                select(Attachment).where(Attachment.file_id == file_id)
+            )
+            if existing.scalar_one_or_none():
+                continue
+
+            # Store attachment
+            attachment = Attachment(
+                id=uuid4(),
+                user_id=session.user_id,
+                file_name=file_name,
+                file_id=file_id,
+                file_size=file_size,
+                mime_type=mime_type,
+                status="pending",
+                telegram_chat_id=chat_id,
+            )
+            db.add(attachment)
+            new_count += 1
+
+        await db.commit()
 
         # Clear processed updates
         if updates:
-            last_update_id = updates[-1].get("update_id", 0)
+            last_id = updates[-1].get("update_id", 0)
             async with httpx.AsyncClient(timeout=10.0) as client:
-                await client.get(
-                    f"{TELEGRAM_API}/getUpdates",
-                    params={"offset": last_update_id + 1},
-                )
+                await client.get(f"{TELEGRAM_API}/getUpdates", params={"offset": last_id + 1})
+
+        return {"status": "ok", "new_attachments": new_count}
+
+    except Exception as e:
+        logger.error("Telegram sync failed: %s", str(e))
+        return {"status": "error", "message": str(e)[:150]}
+
+
+@router.get("/attachments")
+async def list_attachments(
+    session: Session = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """List all attachments received via Telegram."""
+    stmt = (
+        select(Attachment)
+        .where(Attachment.user_id == session.user_id)
+        .order_by(desc(Attachment.received_at))
+    )
+    result = await db.execute(stmt)
+    attachments = result.scalars().all()
+
+    return [
+        {
+            "id": str(a.id),
+            "file_name": a.file_name,
+            "file_size": a.file_size,
+            "mime_type": a.mime_type,
+            "status": a.status,
+            "records_imported": a.records_imported,
+            "error_message": a.error_message,
+            "received_at": a.received_at.isoformat() if a.received_at else None,
+            "processed_at": a.processed_at.isoformat() if a.processed_at else None,
+        }
+        for a in attachments
+    ]
+
+
+@router.post("/attachments/{attachment_id}/process")
+async def process_attachment(
+    attachment_id: str,
+    session: Session = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Download and parse a specific attachment into trade history."""
+    from backend.services.trade_report_parser import parse_xlsx, parse_csv, store_trades
+    from backend.services.telegram_document_handler import _download_telegram_file, _detect_broker
+
+    # Get attachment
+    stmt = select(Attachment).where(
+        Attachment.id == UUID(attachment_id),
+        Attachment.user_id == session.user_id,
+    )
+    result = await db.execute(stmt)
+    attachment = result.scalar_one_or_none()
+
+    if not attachment:
+        return {"status": "error", "message": "Attachment not found"}
+
+    # Download file from Telegram
+    file_bytes = await _download_telegram_file(attachment.file_id)
+    if not file_bytes:
+        attachment.status = "failed"
+        attachment.error_message = "Failed to download from Telegram"
+        await db.commit()
+        return {"status": "error", "message": "Failed to download file from Telegram"}
+
+    # Parse
+    try:
+        ext = "." + attachment.file_name.rsplit(".", 1)[-1].lower()
+        if ext in (".xlsx", ".xls"):
+            records = await parse_xlsx(file_bytes, attachment.file_name)
+        elif ext == ".csv":
+            records = await parse_csv(file_bytes, attachment.file_name)
+        else:
+            attachment.status = "failed"
+            attachment.error_message = f"Unsupported format: {ext}"
+            await db.commit()
+            return {"status": "error", "message": f"Unsupported: {ext}"}
+
+        if not records:
+            attachment.status = "failed"
+            attachment.error_message = "No trade records found in file"
+            await db.commit()
+            return {"status": "error", "message": "No trade records found"}
+
+        # Store trades
+        broker = _detect_broker(attachment.file_name, records)
+        stored = await store_trades(db, session.user_id, records, broker=broker)
+
+        # Update attachment status
+        attachment.status = "processed"
+        attachment.processed_at = datetime.now(timezone.utc)
+        attachment.records_imported = stored
+        await db.commit()
+
+        # Send Telegram confirmation
+        try:
+            from backend.services import telegram_service
+            tickers = sorted(set(r["ticker"] for r in records))
+            buy_count = sum(1 for r in records if r["trade_type"] == "BUY")
+            msg = (
+                f"✅ <b>Trade Report Processed</b>\n\n"
+                f"📄 {attachment.file_name}\n"
+                f"📊 {stored} trades ({buy_count} buys)\n"
+                f"📈 {len(tickers)} stocks: {', '.join(tickers[:10])}\n\n"
+                f"Dividend calculations updated."
+            )
+            if attachment.telegram_chat_id:
+                await telegram_service.send_message(attachment.telegram_chat_id, msg)
+        except Exception:
+            pass
 
         return {
             "status": "ok",
-            "processed": processed,
-            "messages": results,
+            "records_imported": stored,
+            "tickers": sorted(set(r["ticker"] for r in records)),
+            "buy_count": buy_count,
         }
 
     except Exception as e:
-        logger.error("Telegram poll failed: %s", str(e))
-        return {"status": "error", "message": str(e)[:200]}
+        attachment.status = "failed"
+        attachment.error_message = str(e)[:200]
+        await db.commit()
+        logger.error("Attachment processing failed: %s", str(e))
+        return {"status": "error", "message": str(e)[:150]}
 
 
 @router.get("/trade-history")
@@ -106,7 +245,6 @@ async def get_trade_history(
     if not trades:
         return {"has_data": False, "total_trades": 0}
 
-    # Group by ticker
     from collections import defaultdict
     ticker_summary: dict[str, dict] = defaultdict(lambda: {"buys": 0, "sells": 0, "first_buy": None})
 
@@ -138,12 +276,11 @@ async def get_trade_history(
 
 
 @router.get("/purchase-dates")
-async def get_purchase_dates(
+async def get_purchase_dates_endpoint(
     session: Session = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Get earliest purchase date per ticker from trade history."""
+    """Get earliest purchase date per ticker."""
     from backend.services.trade_report_parser import get_purchase_dates
-
     dates = await get_purchase_dates(db, session.user_id)
     return {"has_data": bool(dates), "purchase_dates": dates}
