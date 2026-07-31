@@ -6,7 +6,6 @@ import {
   Upload, Send, CheckCircle2, RefreshCw,
 } from "lucide-react";
 import { useState } from "react";
-import { showToast } from "@/components/common/Toast";
 
 interface EarningsData {
   has_data: boolean;
@@ -420,11 +419,13 @@ function TradeImportCard() {
   });
 
   const [showProgress, setShowProgress] = useState(false);
-  const [progressSteps, setProgressSteps] = useState<Array<{ text: string; done: boolean }>>([]);
+  const [progressSteps, setProgressSteps] = useState<Array<{ text: string; done: boolean; error?: boolean }>>([]);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
 
   const pollMutation = useMutation({
     mutationFn: async () => {
       setShowProgress(true);
+      setSyncResult(null);
       setProgressSteps([
         { text: "Connecting to Telegram bot...", done: false },
         { text: "Checking for new documents...", done: false },
@@ -443,25 +444,34 @@ function TradeImportCard() {
       // Actual API call
       const result = await apiFetch<any>("/telegram/poll", { method: "POST" });
 
-      // Step 3 & 4
-      setProgressSteps((prev) => prev.map((s) => ({ ...s, done: true })));
-      await new Promise((r) => setTimeout(r, 500));
+      if (result.processed > 0) {
+        // Success
+        setProgressSteps((prev) => prev.map((s) => ({ ...s, done: true })));
+        setSyncResult(`✅ Imported ${result.processed} report(s) successfully`);
+      } else {
+        // No documents found
+        setProgressSteps((prev) => prev.map((s, i) => {
+          if (i <= 1) return { ...s, done: true };
+          return { ...s, done: true, error: true, text: i === 2 ? "No new documents found in Telegram" : "Nothing to store" };
+        }));
+        setSyncResult("No documents found. Make sure you sent the file to the Telegram bot BEFORE clicking sync.");
+      }
 
+      await new Promise((r) => setTimeout(r, 300));
       return result;
     },
     onSuccess: (data) => {
       if (data.processed > 0) {
-        showToast({ title: `Imported ${data.processed} report(s)`, variant: "success" });
-      } else {
-        showToast({ title: "No new documents found in Telegram", variant: "default" });
+        refetchTrades();
       }
-      refetchTrades();
-      setTimeout(() => setShowProgress(false), 1500);
     },
     onError: (error: any) => {
       const msg = error?.body?.detail || error?.message || "Sync failed";
-      showToast({ title: typeof msg === "string" ? msg : "Sync failed — try again", variant: "error" });
-      setShowProgress(false);
+      setProgressSteps((prev) => prev.map((s) => {
+        if (s.done) return s;
+        return { ...s, done: true, error: true, text: "Failed" };
+      }));
+      setSyncResult(`❌ ${typeof msg === "string" ? msg : "Sync failed. Check your login session and try again."}`);
     },
   });
 
@@ -480,17 +490,29 @@ function TradeImportCard() {
             <div className="space-y-3">
               {progressSteps.map((step, i) => (
                 <div key={i} className="flex items-center gap-3">
-                  {step.done ? (
+                  {step.done && !step.error ? (
                     <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                  ) : step.done && step.error ? (
+                    <div className="h-4 w-4 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
+                      <span className="text-[10px] text-amber-500">!</span>
+                    </div>
                   ) : (
                     <div className="h-4 w-4 rounded-full border-2 border-primary/30 border-t-primary animate-spin shrink-0" />
                   )}
-                  <span className={`text-xs ${step.done ? "text-foreground" : "text-muted-foreground"}`}>
+                  <span className={`text-xs ${step.error ? "text-amber-500" : step.done ? "text-foreground" : "text-muted-foreground"}`}>
                     {step.text}
                   </span>
                 </div>
               ))}
             </div>
+
+            {/* Result message */}
+            {syncResult && (
+              <div className={`mt-4 pt-3 border-t text-xs ${syncResult.startsWith("✅") ? "text-emerald-500" : "text-muted-foreground"}`}>
+                {syncResult}
+              </div>
+            )}
+
             {!pollMutation.isPending && (
               <button onClick={() => setShowProgress(false)} className="btn-ghost text-xs mt-4 w-full">
                 Close
