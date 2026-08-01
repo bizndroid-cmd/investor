@@ -50,6 +50,10 @@
         reverse_proxy backend:8000
     }
 
+    handle /portfolios/* {
+        reverse_proxy backend:8000
+    }
+
     handle /news/* {
         reverse_proxy backend:8000
     }

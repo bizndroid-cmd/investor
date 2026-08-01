@@ -470,3 +470,25 @@ class UserPreferences(Base):
     updated_at: Mapped[datetime] = mapped_column(
         sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now()
     )
+
+
+class Portfolio(Base):
+    """A named portfolio tied to one geography and broker."""
+
+    __tablename__ = "portfolios"
+    __table_args__ = (sa.Index("idx_portfolios_user", "user_id"),)
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    geo_id: Mapped[str] = mapped_column(String(5), default="IN", nullable=False)
+    broker_id: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    is_default: Mapped[bool] = mapped_column(sa.Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now()
+    )
