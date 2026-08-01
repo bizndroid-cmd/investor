@@ -3,13 +3,12 @@ import { getPortfolio, refreshPortfolio } from "@/api/portfolio";
 import { useActivePortfolio } from "@/contexts/PortfolioContext";
 
 export function usePortfolio() {
-  const { activePortfolio, isLoading: portfolioLoading } = useActivePortfolio();
+  const { activePortfolio } = useActivePortfolio();
   const portfolioId = activePortfolio?.id;
 
   return useQuery({
-    queryKey: ["portfolio", portfolioId],
+    queryKey: ["portfolio", portfolioId ?? "default"],
     queryFn: () => getPortfolio(portfolioId ?? undefined),
-    enabled: !portfolioLoading,
   });
 }
 
