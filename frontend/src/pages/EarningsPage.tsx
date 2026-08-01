@@ -99,11 +99,14 @@ export function EarningsPage() {
         {/* Income Projection */}
         <ProjectionCard data={data} />
 
-        {/* Trade History Import */}
-        <TradeImportCard />
+        {/* Money Insights — additional spark metrics */}
+        <MoneyInsightsCard data={data} />
 
         {/* Dividend Stocks List */}
         <DividendListCard data={data} />
+
+        {/* Trade History Import */}
+        <TradeImportCard />
       </div>
     </div>
   );
@@ -379,7 +382,7 @@ function DividendListCard({ data }: { data: EarningsData }) {
                         <span className="text-emerald-500 font-medium">₹{s.total_earned_est.toLocaleString()}</span>
                         {s.purchase_date && (
                           <p className="text-[9px] text-muted-foreground">
-                            since {new Date(s.purchase_date).toLocaleDateString([], { month: "short", year: "2-digit" })}
+                            since {new Date(s.purchase_date).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}
                           </p>
                         )}
                       </div>
@@ -423,6 +426,81 @@ function DividendListCard({ data }: { data: EarningsData }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================================
+// MONEY INSIGHTS — additional engaging metrics
+// ============================================================
+function MoneyInsightsCard({ data }: { data: EarningsData }) {
+  const s = data.summary!;
+  const cb = data.cost_basis!;
+  const invested = s.total_invested;
+  const currentVal = cb.current_value;
+  const lifetimeDiv = (s as any).total_lifetime_dividends || 0;
+  const totalReturn = cb.unrealized_gain + lifetimeDiv;
+  const totalReturnPct = invested > 0 ? (totalReturn / invested * 100) : 0;
+
+  // Rule of 72: years to double at current return rate
+  const annualReturnPct = totalReturnPct / 3; // rough 3yr assumption
+  const yearsToDouble = annualReturnPct > 0 ? Math.round(72 / annualReturnPct) : 0;
+
+  // Daily earning rate
+  const dailyEarning = totalReturn / (3 * 365); // over ~3 years
+
+  // Dividend reinvestment: if you reinvested all dividends
+  const reinvestedValue = lifetimeDiv > 0 ? lifetimeDiv * (1 + cb.gain_pct / 100) : 0;
+
+  // Per-month SIP equivalent: what SIP gives same corpus
+  const months = 36;
+  // Per-month SIP equivalent
+  const sipEquivalent = currentVal > 0 ? Math.round(currentVal / months) : 0;
+  void sipEquivalent; // future use
+
+  return (
+    <div className="bento-card">
+      <h3 className="text-sm font-bold flex items-center gap-2 mb-4">
+        <TrendingUp className="h-4 w-4 text-amber-500" />
+        Money Insights
+      </h3>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <InsightTile
+          label="Total Return (Gains + Dividends)"
+          value={`₹${Math.round(totalReturn).toLocaleString()}`}
+          sub={`${totalReturnPct.toFixed(1)}% on invested capital`}
+          color="text-emerald-500"
+        />
+        <InsightTile
+          label="Your Money Doubles In"
+          value={yearsToDouble > 0 ? `~${yearsToDouble} years` : "—"}
+          sub="At current growth rate (Rule of 72)"
+          color="text-blue-500"
+        />
+        <InsightTile
+          label="Daily Earning Rate"
+          value={`₹${Math.round(dailyEarning).toLocaleString()}`}
+          sub="Average daily wealth creation"
+          color="text-purple-500"
+        />
+        <InsightTile
+          label="If Dividends Were Reinvested"
+          value={`₹${Math.round(reinvestedValue).toLocaleString()}`}
+          sub="Extra gains from dividend compounding"
+          color="text-amber-500"
+        />
+      </div>
+    </div>
+  );
+}
+
+function InsightTile({ label, value, sub, color }: { label: string; value: string; sub: string; color: string }) {
+  return (
+    <div className="rounded-lg bg-secondary/30 p-3">
+      <p className="text-[10px] text-muted-foreground">{label}</p>
+      <p className={`text-base font-bold mt-1 ${color}`}>{value}</p>
+      <p className="text-[9px] text-muted-foreground mt-0.5">{sub}</p>
     </div>
   );
 }
