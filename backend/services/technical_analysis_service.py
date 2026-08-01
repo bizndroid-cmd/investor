@@ -135,12 +135,13 @@ def _support_resistance(prices: np.ndarray, period: int = 30) -> dict:
     }
 
 
-def _compute_technicals_sync(ticker: str) -> dict[str, Any] | None:
+def _compute_technicals_sync(ticker: str, geo_id: str = "IN") -> dict[str, Any] | None:
     """Synchronous computation using yfinance download. Run in thread pool."""
     try:
         import yfinance
+        from backend.geo.ticker_resolver import resolve
 
-        yf_ticker = f"{ticker}.NS"
+        yf_ticker = resolve(ticker, geo_id)
         stock = yfinance.Ticker(yf_ticker)
         df = stock.history(period="6mo")
 
@@ -261,7 +262,7 @@ def _compute_technicals_sync(ticker: str) -> dict[str, Any] | None:
 class TechnicalAnalysisService:
     """Async wrapper around technical analysis computations."""
 
-    async def get_technicals(self, ticker: str) -> dict[str, Any] | None:
+    async def get_technicals(self, ticker: str, geo_id: str = "IN") -> dict[str, Any] | None:
         """Get all technical indicators for a ticker."""
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _compute_technicals_sync, ticker)
+        return await loop.run_in_executor(None, _compute_technicals_sync, ticker, geo_id)

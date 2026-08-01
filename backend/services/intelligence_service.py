@@ -24,38 +24,9 @@ from backend.models.orm import (
     PredictionRecord,
     StockFundamentals,
 )
+from backend.geo.sectors import get_sector
 
 logger = logging.getLogger(__name__)
-
-# Sector classification for Indian stocks
-SECTOR_MAP = {
-    "RELIANCE": "energy",
-    "ONGC": "energy",
-    "IOC": "energy",
-    "TATAPOWER": "energy",
-    "HDFCBANK": "banking",
-    "IDFCFIRSTB": "banking",
-    "PNB": "banking",
-    "YESBANK": "banking",
-    "TCS": "it",
-    "WIPRO": "it",
-    "LT": "engineering",
-    "ITC": "fmcg",
-    "ITCHOTELS": "hospitality",
-    "ADANIPORTS": "infrastructure",
-    "ASHOKLEY": "auto",
-    "MOTHERSON": "auto",
-    "EXIDEIND": "auto",
-    "BHEL": "engineering",
-    "JIOFIN": "financials",
-    "SERVOTECH": "technology",
-    "PENIND": "chemicals",
-    "BIBCL": "infra",
-    "MSUMI": "auto",
-    "TMPV": "auto",
-    "TMCV": "auto",
-    "RANEHOLDIN": "engineering",
-}
 
 
 class IntelligenceService:
@@ -108,7 +79,7 @@ class IntelligenceService:
 
         return "\n".join(lines)
 
-    async def detect_sector_concentration(self, user_id: UUID) -> list[dict]:
+    async def detect_sector_concentration(self, user_id: UUID, geo_id: str = "IN") -> list[dict]:
         """Detect portfolio concentration risks by sector."""
         stmt = (
             select(PortfolioSnapshot)
@@ -135,7 +106,7 @@ class IntelligenceService:
         sector_tickers: dict[str, list[str]] = defaultdict(list)
 
         for s in latest:
-            sector = SECTOR_MAP.get(s.ticker, "other")
+            sector = get_sector(s.ticker, geo_id)
             sector_exposure[sector] += float(s.current_value)
             sector_tickers[sector].append(s.ticker)
 

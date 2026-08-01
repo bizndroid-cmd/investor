@@ -17,6 +17,7 @@ import httpx
 import redis.asyncio as aioredis
 
 from backend.config import settings
+from backend.geo.market_hours import is_market_open
 from backend.interfaces.market_data_service import IMarketDataService
 from backend.models.domain import HistoricalDataPoint, PriceQuote, TimeRange
 
@@ -74,12 +75,15 @@ class MarketDataService(IMarketDataService):
         self._redis = redis
         self._finnhub_api_key = finnhub_api_key
 
-    async def get_current_price(self, ticker: str) -> PriceQuote:
+    async def get_current_price(self, ticker: str, geo_id: str = "IN") -> PriceQuote:
         """Return the current price quote for a single ticker.
 
         Checks Redis cache first. On miss, calls Finnhub REST API.
         On error/429, returns last cached value with is_stale=True.
         """
+        from backend.geo.ticker_resolver import resolve
+        from backend.geo.market_hours import is_market_open, get_cache_ttl
+
         cache_key = f"price:{ticker}"
 
         # Check cache
@@ -97,7 +101,7 @@ class MarketDataService(IMarketDataService):
         try:
             quote = await self._fetch_finnhub_quote(ticker)
             # Cache with appropriate TTL
-            ttl = MARKET_HOURS_TTL if _is_market_hours() else OFF_HOURS_TTL
+            ttl = get_cache_ttl(geo_id)
             await self._redis.set(cache_key, quote.model_dump_json(), ex=ttl)
             return quote
         except Exception as e:
@@ -105,9 +109,9 @@ class MarketDataService(IMarketDataService):
 
         # Fallback: try yfinance for current price
         try:
-            quote = await self._fetch_yfinance_price(ticker)
+            quote = await self._fetch_yfinance_price(ticker, geo_id)
             if quote and quote.price > 0:
-                ttl = MARKET_HOURS_TTL if _is_market_hours() else OFF_HOURS_TTL
+                ttl = get_cache_ttl(geo_id)
                 await self._redis.set(cache_key, quote.model_dump_json(), ex=ttl)
                 return quote
         except Exception as e:
@@ -132,25 +136,26 @@ class MarketDataService(IMarketDataService):
             is_stale=True,
         )
 
-    async def get_batch_prices(self, tickers: list[str]) -> dict[str, PriceQuote]:
+    async def get_batch_prices(self, tickers: list[str], geo_id: str = "IN") -> dict[str, PriceQuote]:
         """Return current price quotes for multiple tickers concurrently.
 
-        Uses Groww LTP API for Indian stocks (NSE tickers) if a Groww access token
-        is available. Falls back to Finnhub for US stocks.
+        Uses Groww LTP API for Indian stocks (geo_id="IN") if token available.
+        Falls back to Finnhub/yfinance for other geographies.
         """
         if not tickers:
             return {}
 
         quotes: dict[str, PriceQuote] = {}
 
-        # Try Groww LTP API first (supports batch of up to 50)
-        groww_token = settings.groww_access_token or settings.groww_api_key
-        if groww_token:
-            try:
-                groww_quotes = await self._fetch_groww_ltp_batch(tickers, groww_token)
-                quotes.update(groww_quotes)
-            except Exception as e:
-                logger.warning("Groww LTP batch fetch failed: %s", str(e))
+        # Try Groww LTP API only for Indian geography
+        if geo_id == "IN":
+            groww_token = settings.groww_access_token or settings.groww_api_key
+            if groww_token:
+                try:
+                    groww_quotes = await self._fetch_groww_ltp_batch(tickers, groww_token)
+                    quotes.update(groww_quotes)
+                except Exception as e:
+                    logger.warning("Groww LTP batch fetch failed: %s", str(e))
 
         # For any tickers not resolved by Groww, fall back to Finnhub/yfinance
         remaining = [t for t in tickers if t not in quotes]
@@ -159,7 +164,7 @@ class MarketDataService(IMarketDataService):
 
             async def _fetch_with_semaphore(ticker: str) -> tuple[str, PriceQuote]:
                 async with semaphore:
-                    quote = await self.get_current_price(ticker)
+                    quote = await self.get_current_price(ticker, geo_id)
                     return ticker, quote
 
             tasks = [_fetch_with_semaphore(t) for t in remaining]
@@ -234,20 +239,20 @@ class MarketDataService(IMarketDataService):
             is_stale=False,
         )
 
-    async def _fetch_yfinance_price(self, ticker: str) -> PriceQuote | None:
-        """Fetch current price from yfinance as fallback (NSE tickers get .NS suffix)."""
+    async def _fetch_yfinance_price(self, ticker: str, geo_id: str = "IN") -> PriceQuote | None:
+        """Fetch current price from yfinance as fallback (uses ticker_resolver for suffix)."""
         import asyncio
 
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._yfinance_price_sync, ticker)
+        return await loop.run_in_executor(None, self._yfinance_price_sync, ticker, geo_id)
 
-    def _yfinance_price_sync(self, ticker: str) -> PriceQuote | None:
+    def _yfinance_price_sync(self, ticker: str, geo_id: str = "IN") -> PriceQuote | None:
         """Synchronous yfinance price fetch."""
         try:
             import yfinance
+            from backend.geo.ticker_resolver import resolve
 
-            # NSE tickers need .NS suffix
-            yf_ticker = f"{ticker}.NS"
+            yf_ticker = resolve(ticker, geo_id)
             stock = yfinance.Ticker(yf_ticker)
             info = stock.fast_info
 
@@ -389,7 +394,7 @@ class MarketDataService(IMarketDataService):
                             is_stale=False,
                         )
                         quotes[ticker] = quote
-                        ttl = MARKET_HOURS_TTL if _is_market_hours() else OFF_HOURS_TTL
+                        ttl = MARKET_HOURS_TTL if is_market_open("IN") else OFF_HOURS_TTL
                         await self._redis.set(cache_key, quote.model_dump_json(), ex=ttl)
             except Exception as e:
                 logger.warning("Groww LTP batch call failed: %s", str(e))

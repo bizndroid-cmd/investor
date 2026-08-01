@@ -46,6 +46,10 @@
         reverse_proxy backend:8000
     }
 
+    handle /user/* {
+        reverse_proxy backend:8000
+    }
+
     handle /news/* {
         reverse_proxy backend:8000
     }

@@ -41,6 +41,7 @@ class RobinhoodConnector(IBrokerConnector):
     """
 
     broker_id: BrokerId = "robinhood"
+    supported_geographies: list[str] = ["US"]
 
     def _login(self) -> bool:
         """Authenticate with Robinhood using robin_stocks.

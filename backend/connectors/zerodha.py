@@ -40,6 +40,7 @@ class ZerodhaConnector(IBrokerConnector):
     """
 
     broker_id: BrokerId = "zerodha"
+    supported_geographies: list[str] = ["IN"]
 
     def _get_kite_client(self, access_token: str | None = None):
         """Create a KiteConnect client instance."""

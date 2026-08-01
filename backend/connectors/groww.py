@@ -69,6 +69,7 @@ class GrowwConnector(IBrokerConnector):
     """
 
     broker_id: BrokerId = "groww"
+    supported_geographies: list[str] = ["IN"]
 
     async def _get_access_token(self, user_id: UUID) -> str | None:
         """Get the access token — first check broker_tokens table, then fall back to settings."""

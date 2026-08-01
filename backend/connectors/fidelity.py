@@ -46,6 +46,7 @@ class FidelityConnector(IBrokerConnector):
     """
 
     broker_id: BrokerId = "fidelity"
+    supported_geographies: list[str] = ["US"]
 
     def _get_auth_headers(self) -> dict[str, str]:
         """Return SnapTrade authentication headers."""

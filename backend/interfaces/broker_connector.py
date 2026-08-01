@@ -20,6 +20,9 @@ class IBrokerConnector(ABC):
     """
 
     broker_id: BrokerId
+    supported_geographies: list[str] = []  # e.g., ["IN"] or ["US"]
+
+    broker_id: BrokerId
 
     # ------------------------------------------------------------------
     # Auth lifecycle

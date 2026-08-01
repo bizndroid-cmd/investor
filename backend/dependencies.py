@@ -30,6 +30,7 @@ from backend.services.news_analyzer import NewsAnalyzer
 from backend.services.news_service import NewsService
 from backend.services.order_service import OrderService
 from backend.services.websocket_manager import WebSocketManager
+from backend.routers.auth import get_current_user  # noqa: E402 — needed for get_user_geo dep
 
 # ---------------------------------------------------------------------------
 # Singleton instances (initialized during app lifespan)
@@ -192,3 +193,33 @@ def get_news_service(
     aggregator = NewsAggregator()
     analyzer = NewsAnalyzer(llm_service=llm_service)
     return NewsService(db=db, redis=redis, aggregator=aggregator, analyzer=analyzer)
+
+
+# ---------------------------------------------------------------------------
+# Geography resolution
+# ---------------------------------------------------------------------------
+
+
+async def get_user_geo(
+    session=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> str:
+    """Resolve user's geography from preferences, defaulting to 'IN'.
+
+    This is a FastAPI dependency that can be injected into any route handler
+    that needs geography-aware behavior.
+    """
+    from backend.models.orm import UserPreferences
+    from sqlalchemy import select
+
+    stmt = select(UserPreferences.geography).where(
+        UserPreferences.user_id == session.user_id
+    )
+    result = await db.execute(stmt)
+    geo = result.scalar_one_or_none()
+    return geo or "IN"
+
+
+def get_redis_pool() -> aioredis.Redis | None:
+    """Return the global Redis pool (or None if not initialized)."""
+    return _redis_pool
