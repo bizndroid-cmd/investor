@@ -23,9 +23,9 @@
 - [x] 15. Create Frontend GeoContext provider (`frontend/src/contexts/GeoContext.tsx`) fetching preferences on mount, exposing geography/currency/locale/formatCurrency to all components. #requirement-13
 - [x] 16. Replace all hardcoded "₹" and "en-IN" formatting in frontend pages (Portfolio, Earnings, Alerts, Research) with GeoContext formatCurrency hook. #requirement-13
 - [x] 17. Create Frontend Settings page (`frontend/src/pages/SettingsPage.tsx`) with geography selector, broker display, timezone — calls PUT /user/preferences, add to nav. #requirement-13
-- [ ] 18. Update Telegram notification messages to use `format_currency(value, geo_id)` instead of hardcoded "₹" — pass user geo through all send functions. #requirement-4 #requirement-12
-- [ ] 19. Update Earnings page yield comparison to show geo-appropriate benchmarks (FD/PPF for IN, T-Bills/S&P500 for US) and geo-appropriate dividend frequency assumptions. #requirement-14
-- [ ] 20. Integration testing and backward compatibility verification — verify existing IN user unaffected, test US user end-to-end, deploy to AWS with zero regression. #requirement-12
+- [x] 18. Update Telegram notification messages to use `format_currency(value, geo_id)` instead of hardcoded "₹" — pass user geo through all send functions. #requirement-4 #requirement-12
+- [x] 19. Update Earnings page yield comparison to show geo-appropriate benchmarks (FD/PPF for IN, T-Bills/S&P500 for US) and geo-appropriate dividend frequency assumptions. #requirement-14
+- [x] 20. Integration testing and backward compatibility verification — verify existing IN user unaffected, test US user end-to-end, deploy to AWS with zero regression. #requirement-12
 
 ## Task Dependency Graph
 
