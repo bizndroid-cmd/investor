@@ -1,20 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getFundamentals, refreshFundamentals } from "@/api/portfolio";
 import type { StockFundamental } from "@/api/portfolio";
+import { useActivePortfolio } from "@/contexts/PortfolioContext";
 import { RefreshCw, Loader2 } from "lucide-react";
 
 export function FundamentalsPanel() {
   const queryClient = useQueryClient();
+  const { activePortfolio } = useActivePortfolio();
+  const portfolioId = activePortfolio?.id;
+
   const { data: fundamentals, isLoading } = useQuery({
-    queryKey: ["fundamentals"],
-    queryFn: getFundamentals,
+    queryKey: ["fundamentals", portfolioId],
+    queryFn: () => getFundamentals(portfolioId ?? undefined),
     staleTime: 60 * 60 * 1000, // 1 hour
   });
 
   const refreshMutation = useMutation({
-    mutationFn: refreshFundamentals,
+    mutationFn: () => refreshFundamentals(portfolioId ?? undefined),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["fundamentals"] });
+      queryClient.invalidateQueries({ queryKey: ["fundamentals", portfolioId] });
     },
   });
 

@@ -33,6 +33,7 @@ from backend.config import settings
 from backend.routers.auth import get_current_user, get_redis
 from backend.services.aggregator_service import AggregatorService
 from backend.services.market_data_service import MarketDataService
+from backend.dependencies import get_portfolio_id as get_portfolio_id_dep
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,7 @@ async def get_portfolio(
     session: Session = Depends(get_current_user),
     aggregator: AggregatorService = Depends(get_aggregator_service),
     db: AsyncSession = Depends(get_db),
+    portfolio_id=Depends(get_portfolio_id_dep),
 ) -> Portfolio:
     """Return the aggregated portfolio for the current user.
     
@@ -130,19 +132,26 @@ async def get_portfolio(
     today = datetime.now(IST).date()
 
     # Check if we already have today's snapshot
-    stmt = select(PortfolioDailySummary).where(
+    summary_filters = [
         PortfolioDailySummary.user_id == session.user_id,
         PortfolioDailySummary.snapshot_date == today,
-    )
+    ]
+    if portfolio_id:
+        summary_filters.append(PortfolioDailySummary.portfolio_id == portfolio_id)
+
+    stmt = select(PortfolioDailySummary).where(*summary_filters)
     result = await db.execute(stmt)
     existing_summary = result.scalar_one_or_none()
 
     # Fallback: if no today snapshot, try most recent available
     if not existing_summary:
         from sqlalchemy import desc
+        fallback_filters = [PortfolioDailySummary.user_id == session.user_id]
+        if portfolio_id:
+            fallback_filters.append(PortfolioDailySummary.portfolio_id == portfolio_id)
         stmt = (
             select(PortfolioDailySummary)
-            .where(PortfolioDailySummary.user_id == session.user_id)
+            .where(*fallback_filters)
             .order_by(desc(PortfolioDailySummary.snapshot_date))
             .limit(1)
         )
@@ -151,10 +160,13 @@ async def get_portfolio(
 
     if existing_summary:
         # Serve from stored snapshot (no broker API call)
-        holdings_stmt = select(PortfolioSnapshot).where(
+        holdings_filters = [
             PortfolioSnapshot.user_id == session.user_id,
             PortfolioSnapshot.snapshot_date == existing_summary.snapshot_date,
-        )
+        ]
+        if portfolio_id:
+            holdings_filters.append(PortfolioSnapshot.portfolio_id == portfolio_id)
+        holdings_stmt = select(PortfolioSnapshot).where(*holdings_filters)
         holdings_result = await db.execute(holdings_stmt)
         snapshot_holdings = holdings_result.scalars().all()
 
@@ -190,12 +202,24 @@ async def get_portfolio(
         )
 
     # No snapshot for today — fetch live from broker APIs (first access of the day)
-    portfolio = await aggregator.get_portfolio(user_id=session.user_id)
+    # Scope to portfolio's broker if portfolio_id is set
+    broker_id_filter = None
+    if portfolio_id:
+        from backend.models.orm import Portfolio as PortfolioORM
+        port_stmt = select(PortfolioORM.broker_id).where(PortfolioORM.id == portfolio_id)
+        port_result = await db.execute(port_stmt)
+        broker_id_filter = port_result.scalar_one_or_none()
+
+    portfolio = await aggregator.get_portfolio(
+        user_id=session.user_id, broker_id_filter=broker_id_filter
+    )
 
     # Store today's snapshot
     try:
         snapshot_svc = PortfolioSnapshotService(db=db)
-        await snapshot_svc.capture_snapshot(user_id=session.user_id, portfolio=portfolio)
+        await snapshot_svc.capture_snapshot(
+            user_id=session.user_id, portfolio=portfolio, portfolio_id=portfolio_id
+        )
     except Exception as e:
         logger.debug("Snapshot capture skipped: %s", str(e))
 
@@ -207,6 +231,7 @@ async def get_holdings(
     broker_id: Optional[BrokerId] = Query(default=None, description="Filter holdings by broker"),
     session: Session = Depends(get_current_user),
     aggregator: AggregatorService = Depends(get_aggregator_service),
+    portfolio_id=Depends(get_portfolio_id_dep),
 ) -> list[NormalizedHolding]:
     """Return normalized holdings, optionally filtered by broker_id."""
     if broker_id:
@@ -223,16 +248,30 @@ async def refresh_portfolio(
     session: Session = Depends(get_current_user),
     aggregator: AggregatorService = Depends(get_aggregator_service),
     db: AsyncSession = Depends(get_db),
+    portfolio_id=Depends(get_portfolio_id_dep),
 ) -> list[RefreshResult]:
     """Trigger a force-refresh from all connected brokers."""
     results = await aggregator.refresh_all(user_id=session.user_id)
 
+    # Resolve broker_id for portfolio-scoped fetch
+    broker_id_filter = None
+    if portfolio_id:
+        from backend.models.orm import Portfolio as PortfolioORM
+        from sqlalchemy import select as sa_select
+        port_stmt = sa_select(PortfolioORM.broker_id).where(PortfolioORM.id == portfolio_id)
+        port_result = await db.execute(port_stmt)
+        broker_id_filter = port_result.scalar_one_or_none()
+
     # Capture snapshot after refresh with fresh data
     try:
-        portfolio = await aggregator.get_portfolio(user_id=session.user_id)
+        portfolio = await aggregator.get_portfolio(
+            user_id=session.user_id, broker_id_filter=broker_id_filter
+        )
         from backend.services.portfolio_snapshot_service import PortfolioSnapshotService
         snapshot_svc = PortfolioSnapshotService(db=db)
-        await snapshot_svc.capture_snapshot(user_id=session.user_id, portfolio=portfolio)
+        await snapshot_svc.capture_snapshot(
+            user_id=session.user_id, portfolio=portfolio, portfolio_id=portfolio_id
+        )
     except Exception as e:
         logger.debug("Snapshot capture after refresh skipped: %s", str(e))
 
@@ -243,6 +282,7 @@ async def refresh_portfolio(
 async def get_fundamentals(
     session: Session = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    portfolio_id=Depends(get_portfolio_id_dep),
 ) -> list[dict]:
     """Get stock fundamentals for all portfolio tickers."""
     from backend.services.screener_service import ScreenerService
@@ -256,9 +296,10 @@ async def get_fundamentals(
 
     # Fallback: get tickers from portfolio snapshots
     if not tickers:
-        stmt = select(distinct(PortfolioSnapshot.ticker)).where(
-            PortfolioSnapshot.user_id == session.user_id
-        )
+        snapshot_filters = [PortfolioSnapshot.user_id == session.user_id]
+        if portfolio_id:
+            snapshot_filters.append(PortfolioSnapshot.portfolio_id == portfolio_id)
+        stmt = select(distinct(PortfolioSnapshot.ticker)).where(*snapshot_filters)
         result = await db.execute(stmt)
         tickers = [r[0] for r in result.all()]
 
@@ -273,6 +314,7 @@ async def get_fundamentals(
 async def refresh_fundamentals(
     session: Session = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    portfolio_id=Depends(get_portfolio_id_dep),
 ) -> dict:
     """Trigger a refresh of stock fundamentals from screener.in."""
     from backend.services.screener_service import ScreenerService
@@ -286,9 +328,10 @@ async def refresh_fundamentals(
 
     # Fallback: portfolio snapshots
     if not tickers:
-        stmt = select(distinct(PortfolioSnapshot.ticker)).where(
-            PortfolioSnapshot.user_id == session.user_id
-        )
+        snapshot_filters = [PortfolioSnapshot.user_id == session.user_id]
+        if portfolio_id:
+            snapshot_filters.append(PortfolioSnapshot.portfolio_id == portfolio_id)
+        stmt = select(distinct(PortfolioSnapshot.ticker)).where(*snapshot_filters)
         result = await db.execute(stmt)
         tickers = [r[0] for r in result.all()]
 

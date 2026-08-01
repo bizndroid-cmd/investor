@@ -240,3 +240,118 @@ def _to_response(p: Portfolio) -> PortfolioResponse:
         display_name=geo.display_name,
         created_at=p.created_at.isoformat() if p.created_at else "",
     )
+
+
+@router.get("/net-worth")
+async def get_combined_net_worth(
+    session: Session = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Combined net worth across all user portfolios.
+
+    Returns total value, invested, gain/loss aggregated from
+    the latest daily summary per portfolio.
+    """
+    from backend.models.orm import PortfolioDailySummary
+    from sqlalchemy import desc
+    from decimal import Decimal
+
+    # Get all portfolios
+    stmt = select(Portfolio).where(Portfolio.user_id == session.user_id)
+    result = await db.execute(stmt)
+    portfolios = result.scalars().all()
+
+    if not portfolios:
+        return {"total_value": 0, "total_invested": 0, "total_gain_loss": 0, "portfolios": []}
+
+    total_value = Decimal("0")
+    total_invested = Decimal("0")
+    total_gain_loss = Decimal("0")
+    portfolio_summaries = []
+
+    for p in portfolios:
+        # Get latest summary for this portfolio
+        summary_stmt = (
+            select(PortfolioDailySummary)
+            .where(
+                PortfolioDailySummary.user_id == session.user_id,
+                PortfolioDailySummary.portfolio_id == p.id,
+            )
+            .order_by(desc(PortfolioDailySummary.snapshot_date))
+            .limit(1)
+        )
+        summary_result = await db.execute(summary_stmt)
+        summary = summary_result.scalar_one_or_none()
+
+        if summary:
+            total_value += summary.total_value
+            total_invested += summary.total_invested
+            total_gain_loss += summary.total_gain_loss
+            geo = get_geo(p.geo_id)
+            portfolio_summaries.append({
+                "id": str(p.id),
+                "name": p.name,
+                "geo_id": p.geo_id,
+                "currency_symbol": geo.currency_symbol,
+                "total_value": float(summary.total_value),
+                "total_invested": float(summary.total_invested),
+                "total_gain_loss": float(summary.total_gain_loss),
+                "gain_loss_pct": float(summary.total_gain_loss_percent),
+            })
+
+    # Also check for summaries without portfolio_id (legacy data)
+    legacy_stmt = (
+        select(PortfolioDailySummary)
+        .where(
+            PortfolioDailySummary.user_id == session.user_id,
+            PortfolioDailySummary.portfolio_id.is_(None),
+        )
+        .order_by(desc(PortfolioDailySummary.snapshot_date))
+        .limit(1)
+    )
+    legacy_result = await db.execute(legacy_stmt)
+    legacy_summary = legacy_result.scalar_one_or_none()
+
+    if legacy_summary and not portfolio_summaries:
+        # Legacy data not yet assigned — include it
+        total_value += legacy_summary.total_value
+        total_invested += legacy_summary.total_invested
+        total_gain_loss += legacy_summary.total_gain_loss
+        portfolio_summaries.append({
+            "id": "legacy",
+            "name": "Unassigned",
+            "geo_id": "IN",
+            "currency_symbol": "₹",
+            "total_value": float(legacy_summary.total_value),
+            "total_invested": float(legacy_summary.total_invested),
+            "total_gain_loss": float(legacy_summary.total_gain_loss),
+            "gain_loss_pct": float(legacy_summary.total_gain_loss_percent),
+        })
+
+    gain_loss_pct = (total_gain_loss / total_invested * 100) if total_invested > 0 else Decimal("0")
+
+    # Include ETF holdings in net worth
+    from backend.models.orm import ETFHolding
+    etf_stmt = select(ETFHolding).where(ETFHolding.user_id == session.user_id)
+    etf_result = await db.execute(etf_stmt)
+    etf_holdings = etf_result.scalars().all()
+
+    etf_value_inr = Decimal("0")
+    etf_value_usd = Decimal("0")
+    for etf in etf_holdings:
+        # Use buy_price * quantity as estimate (live price requires yfinance call — too slow for net worth)
+        val = etf.buy_price * etf.quantity
+        if etf.currency == "INR":
+            etf_value_inr += val
+        else:
+            etf_value_usd += val
+
+    return {
+        "total_value": float(total_value),
+        "total_invested": float(total_invested),
+        "total_gain_loss": float(total_gain_loss),
+        "gain_loss_pct": float(gain_loss_pct),
+        "etf_value_inr": float(etf_value_inr),
+        "etf_value_usd": float(etf_value_usd),
+        "portfolios": portfolio_summaries,
+    }

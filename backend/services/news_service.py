@@ -195,7 +195,7 @@ class NewsService(INewsService):
                 articles_analyzed=0,
             )
 
-    async def generate_briefing(self, user_id: UUID) -> dict:
+    async def generate_briefing(self, user_id: UUID, portfolio_id=None, geo_id: str = "IN") -> dict:
         """Generate a daily portfolio briefing from stored news data.
 
         Logic:
@@ -218,7 +218,7 @@ class NewsService(INewsService):
         last_fetched_at = last_collection.started_at if last_collection else None
 
         # 2. Get user's portfolio holdings
-        holdings_data = await self._get_holdings_for_briefing(user_id)
+        holdings_data = await self._get_holdings_for_briefing(user_id, portfolio_id)
         portfolio_tickers = [h["ticker"] for h in holdings_data]
 
         # 3. Get articles for today's collection_date (with fallback)
@@ -744,12 +744,40 @@ class NewsService(INewsService):
             for a in articles
         ]
 
-    async def _get_holdings_for_briefing(self, user_id: UUID) -> list[dict]:
+    async def _get_holdings_for_briefing(self, user_id: UUID, portfolio_id=None) -> list[dict]:
         """Get holdings data for the briefing prompt.
 
-        Tries HoldingCache first, then Groww connector, then returns fallback tickers.
+        Tries portfolio snapshots (scoped by portfolio_id), then HoldingCache,
+        then Groww connector, then returns fallback tickers.
         """
-        from backend.models.orm import HoldingCache
+        from backend.models.orm import HoldingCache, PortfolioSnapshot
+        from sqlalchemy import select, distinct, desc
+
+        # If portfolio_id given, try snapshots first
+        if portfolio_id:
+            stmt = (
+                select(PortfolioSnapshot)
+                .where(
+                    PortfolioSnapshot.user_id == user_id,
+                    PortfolioSnapshot.portfolio_id == portfolio_id,
+                )
+                .order_by(desc(PortfolioSnapshot.snapshot_date))
+            )
+            result = await self._db.execute(stmt)
+            all_snaps = result.scalars().all()
+            if all_snaps:
+                latest_date = all_snaps[0].snapshot_date
+                holdings = [s for s in all_snaps if s.snapshot_date == latest_date]
+                return [
+                    {
+                        "ticker": h.ticker,
+                        "quantity": float(h.quantity),
+                        "avg_buy_price": float(h.avg_buy_price),
+                        "current_price": float(h.current_price) if h.current_price else None,
+                        "gain_loss_percent": float(h.gain_loss_percent) if h.gain_loss_percent else None,
+                    }
+                    for h in holdings
+                ]
 
         # Try holdings cache
         stmt = select(HoldingCache).where(HoldingCache.user_id == user_id)
@@ -762,7 +790,7 @@ class NewsService(INewsService):
                     "ticker": h.ticker,
                     "quantity": float(h.quantity),
                     "avg_buy_price": float(h.avg_buy_price),
-                    "current_price": None,  # not stored in cache
+                    "current_price": None,
                     "gain_loss_percent": None,
                 }
                 for h in cached

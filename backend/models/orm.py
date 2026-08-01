@@ -292,6 +292,9 @@ class PortfolioSnapshot(Base):
     user_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
+    portfolio_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("portfolios.id", ondelete="SET NULL"), nullable=True
+    )
     snapshot_date: Mapped[datetime] = mapped_column(sa.Date, nullable=False)
     ticker: Mapped[str] = mapped_column(String(20), nullable=False)
     broker_id: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -321,6 +324,9 @@ class PortfolioDailySummary(Base):
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    portfolio_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("portfolios.id", ondelete="SET NULL"), nullable=True
     )
     snapshot_date: Mapped[datetime] = mapped_column(sa.Date, nullable=False)
     total_value: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
@@ -410,6 +416,9 @@ class TradeHistory(Base):
     user_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
+    portfolio_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("portfolios.id", ondelete="SET NULL"), nullable=True
+    )
     ticker: Mapped[str] = mapped_column(String(30), nullable=False)
     isin: Mapped[str | None] = mapped_column(String(20), nullable=True)
     trade_type: Mapped[str] = mapped_column(String(10), nullable=False)  # BUY or SELL
@@ -464,6 +473,37 @@ class UserPreferences(Base):
     default_broker: Mapped[str | None] = mapped_column(String(20), nullable=True)
     timezone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     currency_code: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now()
+    )
+
+
+class ETFHolding(Base):
+    """User's ETF holdings for tracking and analysis."""
+
+    __tablename__ = "etf_holdings"
+    __table_args__ = (
+        sa.Index("idx_etf_holdings_user", "user_id"),
+        UniqueConstraint("user_id", "ticker", "geo_id", name="uq_etf_holdings_user_ticker_geo"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    buy_price: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    buy_date: Mapped[datetime | None] = mapped_column(sa.Date, nullable=True)
+    geo_id: Mapped[str] = mapped_column(String(5), nullable=False)
+    currency: Mapped[str] = mapped_column(String(5), nullable=False)
+    portfolio_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("portfolios.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
     )

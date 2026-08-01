@@ -17,6 +17,7 @@ from backend.database import get_db
 from backend.models.domain import Session
 from backend.models.orm import PortfolioSnapshot, StockFundamentals
 from backend.routers.auth import get_current_user
+from backend.dependencies import get_portfolio_id as get_portfolio_id_dep
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +28,17 @@ router = APIRouter(prefix="/portfolio/earnings", tags=["earnings"])
 async def get_earnings(
     session: Session = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    portfolio_id=Depends(get_portfolio_id_dep),
 ) -> dict:
     """Full earnings breakdown: dividends, yield, cost basis, projections."""
 
     # Get latest portfolio snapshot
+    snapshot_filters = [PortfolioSnapshot.user_id == session.user_id]
+    if portfolio_id:
+        snapshot_filters.append(PortfolioSnapshot.portfolio_id == portfolio_id)
     stmt = (
         select(PortfolioSnapshot)
-        .where(PortfolioSnapshot.user_id == session.user_id)
+        .where(*snapshot_filters)
         .order_by(desc(PortfolioSnapshot.snapshot_date))
     )
     result = await db.execute(stmt)
@@ -94,7 +99,7 @@ async def get_earnings(
     import asyncio
     from backend.services.trade_report_parser import get_purchase_dates as get_real_purchase_dates
 
-    real_purchase_dates = await get_real_purchase_dates(db, session.user_id)
+    real_purchase_dates = await get_real_purchase_dates(db, session.user_id, portfolio_id)
 
     # Filter dividend_stocks to only those in trade history
     if real_purchase_dates:

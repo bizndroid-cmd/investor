@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getNewsFeed, triggerRefresh, getPortfolioBriefing, getLLMStatus } from "@/api/news";
+import { useActivePortfolio } from "@/contexts/PortfolioContext";
 import type { NewsFeedParams } from "@/api/news";
 
 export function useNews(filters: NewsFeedParams = {}) {
@@ -20,9 +21,12 @@ export function useRefreshNews() {
 }
 
 export function useBriefing() {
+  const { activePortfolio } = useActivePortfolio();
+  const portfolioId = activePortfolio?.id;
+
   return useQuery({
-    queryKey: ["briefing"],
-    queryFn: getPortfolioBriefing,
+    queryKey: ["briefing", portfolioId],
+    queryFn: () => getPortfolioBriefing(portfolioId ?? undefined),
     staleTime: 10 * 60 * 1000, // 10 minutes
     gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
   });

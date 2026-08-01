@@ -110,8 +110,9 @@ export interface LLMStatus {
   } | null;
 }
 
-export async function getPortfolioBriefing(): Promise<BriefingResponse> {
-  return apiFetch<BriefingResponse>("/news/briefing");
+export async function getPortfolioBriefing(portfolioId?: string): Promise<BriefingResponse> {
+  const params = portfolioId ? `?portfolio_id=${portfolioId}` : "";
+  return apiFetch<BriefingResponse>(`/news/briefing${params}`);
 }
 
 export async function getLLMStatus(): Promise<LLMStatus> {

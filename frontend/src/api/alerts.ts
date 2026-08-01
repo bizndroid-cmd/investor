@@ -1,8 +1,9 @@
 import { apiFetch } from "./client";
 import type { Alert, CreateAlertRequest, UpdateAlertRequest } from "./types";
 
-export async function getAlerts(): Promise<Alert[]> {
-  return apiFetch<Alert[]>("/alerts");
+export async function getAlerts(portfolioId?: string): Promise<Alert[]> {
+  const params = portfolioId ? `?portfolio_id=${portfolioId}` : "";
+  return apiFetch<Alert[]>(`/alerts${params}`);
 }
 
 export async function createAlert(request: CreateAlertRequest): Promise<Alert> {

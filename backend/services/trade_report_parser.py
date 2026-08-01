@@ -327,23 +327,27 @@ async def store_trades(
     return stored
 
 
-async def get_purchase_dates(db: AsyncSession, user_id: UUID) -> dict[str, str]:
+async def get_purchase_dates(db: AsyncSession, user_id: UUID, portfolio_id=None) -> dict[str, str]:
     """Get earliest BUY date per ticker from trade history.
 
     Returns {ticker: date_iso_string} for use in dividend calculations.
     """
     from sqlalchemy import select, func
 
+    filters = [
+        TradeHistory.user_id == user_id,
+        TradeHistory.trade_type == "BUY",
+        TradeHistory.executed_at.isnot(None),
+    ]
+    if portfolio_id:
+        filters.append(TradeHistory.portfolio_id == portfolio_id)
+
     stmt = (
         select(
             TradeHistory.ticker,
             func.min(TradeHistory.executed_at).label("first_buy"),
         )
-        .where(
-            TradeHistory.user_id == user_id,
-            TradeHistory.trade_type == "BUY",
-            TradeHistory.executed_at.isnot(None),
-        )
+        .where(*filters)
         .group_by(TradeHistory.ticker)
     )
     result = await db.execute(stmt)

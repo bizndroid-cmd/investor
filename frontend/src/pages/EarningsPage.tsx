@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/api/client";
+import { useActivePortfolio } from "@/contexts/PortfolioContext";
 import {
   Wallet, TrendingUp, PiggyBank, BarChart3,
   CircleDollarSign, ChevronDown, ChevronUp, Landmark,
@@ -58,15 +59,20 @@ interface DividendStock {
   purchase_date?: string | null;
 }
 
-async function fetchEarnings(): Promise<EarningsData> {
-  return apiFetch("/portfolio/earnings");
+async function fetchEarnings(portfolioId?: string): Promise<EarningsData> {
+  const params = portfolioId ? `?portfolio_id=${portfolioId}` : "";
+  return apiFetch(`/portfolio/earnings${params}`);
 }
 
 export function EarningsPage() {
+  const { activePortfolio } = useActivePortfolio();
+  const portfolioId = activePortfolio?.id;
+
   const { data, isLoading } = useQuery({
-    queryKey: ["earnings"],
-    queryFn: fetchEarnings,
+    queryKey: ["earnings", portfolioId],
+    queryFn: () => fetchEarnings(portfolioId ?? undefined),
     staleTime: 5 * 60_000,
+    enabled: !!portfolioId,
   });
 
   if (isLoading) return <LoadingSkeleton />;

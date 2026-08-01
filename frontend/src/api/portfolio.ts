@@ -1,17 +1,22 @@
 import { apiFetch } from "./client";
 import type { Portfolio, NormalizedHolding, HistoricalDataPoint, TimeRange } from "./types";
 
-export async function getPortfolio(): Promise<Portfolio> {
-  return apiFetch<Portfolio>("/portfolio");
+export async function getPortfolio(portfolioId?: string): Promise<Portfolio> {
+  const params = portfolioId ? `?portfolio_id=${portfolioId}` : "";
+  return apiFetch<Portfolio>(`/portfolio${params}`);
 }
 
-export async function getHoldings(brokerId?: string): Promise<NormalizedHolding[]> {
-  const params = brokerId ? `?broker_id=${brokerId}` : "";
-  return apiFetch<NormalizedHolding[]>(`/portfolio/holdings${params}`);
+export async function getHoldings(brokerId?: string, portfolioId?: string): Promise<NormalizedHolding[]> {
+  const searchParams = new URLSearchParams();
+  if (brokerId) searchParams.set("broker_id", brokerId);
+  if (portfolioId) searchParams.set("portfolio_id", portfolioId);
+  const query = searchParams.toString();
+  return apiFetch<NormalizedHolding[]>(`/portfolio/holdings${query ? `?${query}` : ""}`);
 }
 
-export async function refreshPortfolio(): Promise<Portfolio> {
-  return apiFetch<Portfolio>("/portfolio/refresh", { method: "POST" });
+export async function refreshPortfolio(portfolioId?: string): Promise<Portfolio> {
+  const params = portfolioId ? `?portfolio_id=${portfolioId}` : "";
+  return apiFetch<Portfolio>(`/portfolio/refresh${params}`, { method: "POST" });
 }
 
 export async function getHistoricalData(
@@ -35,10 +40,12 @@ export interface StockFundamental {
   cons?: string;
 }
 
-export async function getFundamentals(): Promise<StockFundamental[]> {
-  return apiFetch<StockFundamental[]>("/portfolio/fundamentals");
+export async function getFundamentals(portfolioId?: string): Promise<StockFundamental[]> {
+  const params = portfolioId ? `?portfolio_id=${portfolioId}` : "";
+  return apiFetch<StockFundamental[]>(`/portfolio/fundamentals${params}`);
 }
 
-export async function refreshFundamentals(): Promise<{ status: string; updated: number }> {
-  return apiFetch("/portfolio/fundamentals/refresh", { method: "POST" });
+export async function refreshFundamentals(portfolioId?: string): Promise<{ status: string; updated: number }> {
+  const params = portfolioId ? `?portfolio_id=${portfolioId}` : "";
+  return apiFetch(`/portfolio/fundamentals/refresh${params}`, { method: "POST" });
 }

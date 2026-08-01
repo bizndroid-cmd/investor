@@ -134,7 +134,7 @@ class AggregatorService(IAggregatorService):
             is_stale=False,
         )
 
-    async def get_portfolio(self, user_id: UUID) -> Portfolio:
+    async def get_portfolio(self, user_id: UUID, broker_id_filter: str | None = None) -> Portfolio:
         """Return the aggregated portfolio for the given user.
 
         - Check Redis cache first for each broker
@@ -144,14 +144,26 @@ class AggregatorService(IAggregatorService):
         - Compute portfolio summary
         - Cache results in Redis
         - Return Portfolio object
+
+        Args:
+            user_id: The user to fetch portfolio for.
+            broker_id_filter: If provided, only fetch from this specific broker.
         """
         all_holdings: list[NormalizedHolding] = []
         broker_statuses: list[BrokerStatus] = []
         day_change = Decimal("0")
 
+        # Determine which brokers to check
+        connectors_to_check = self._connectors.items()
+        if broker_id_filter:
+            connectors_to_check = [
+                (bid, conn) for bid, conn in self._connectors.items()
+                if bid == broker_id_filter
+            ]
+
         # Determine which brokers are connected
         connected_brokers: list[BrokerId] = []
-        for broker_id, connector in self._connectors.items():
+        for broker_id, connector in connectors_to_check:
             try:
                 if await connector.is_connected(user_id):
                     connected_brokers.append(broker_id)

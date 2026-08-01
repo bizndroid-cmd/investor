@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Query
 
 from backend.models.domain import PaginatedNewsResponse, RefreshStatus, Session
 from backend.routers.auth import get_current_user
+from backend.dependencies import get_portfolio_id as get_portfolio_id_dep, get_portfolio_geo
 
 router = APIRouter(prefix="/news", tags=["news"])
 
@@ -30,6 +31,7 @@ async def get_news_feed(
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     session: Session = Depends(get_current_user),
     news_service=Depends(get_news_service),
+    portfolio_id=Depends(get_portfolio_id_dep),
 ) -> PaginatedNewsResponse:
     """Return a paginated, optionally filtered news feed for the current user."""
     return await news_service.get_news_feed(
@@ -60,9 +62,15 @@ async def trigger_refresh(
 async def get_portfolio_briefing(
     session: Session = Depends(get_current_user),
     news_service=Depends(get_news_service),
+    portfolio_id=Depends(get_portfolio_id_dep),
+    geo_id: str = Depends(get_portfolio_geo),
 ) -> dict:
     """Generate a daily portfolio briefing combining holdings + news."""
-    return await news_service.generate_briefing(user_id=session.user_id)
+    return await news_service.generate_briefing(
+        user_id=session.user_id,
+        portfolio_id=portfolio_id,
+        geo_id=geo_id,
+    )
 
 
 @router.get("/briefing/history")

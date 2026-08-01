@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/api/client";
+import { useActivePortfolio } from "@/contexts/PortfolioContext";
 import {
   TrendingUp, TrendingDown, Search, Target,
   BarChart3, Activity, AlertTriangle, ChevronDown, ChevronUp,
@@ -49,17 +50,20 @@ interface ResearchData {
   risk_factors?: string[];
 }
 
-async function fetchResearch(ticker: string): Promise<ResearchData> {
-  return apiFetch(`/portfolio/research/${ticker}`);
+async function fetchResearch(ticker: string, portfolioId?: string): Promise<ResearchData> {
+  const params = portfolioId ? `?portfolio_id=${portfolioId}` : "";
+  return apiFetch(`/portfolio/research/${ticker}${params}`);
 }
 
 export function ResearchPage() {
+  const { activePortfolio } = useActivePortfolio();
+  const portfolioId = activePortfolio?.id;
   const [ticker, setTicker] = useState("");
   const [searchTicker, setSearchTicker] = useState("");
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["research", searchTicker],
-    queryFn: () => fetchResearch(searchTicker),
+    queryKey: ["research", searchTicker, portfolioId],
+    queryFn: () => fetchResearch(searchTicker, portfolioId ?? undefined),
     enabled: !!searchTicker,
   });
 

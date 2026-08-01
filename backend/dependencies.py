@@ -223,3 +223,76 @@ async def get_user_geo(
 def get_redis_pool() -> aioredis.Redis | None:
     """Return the global Redis pool (or None if not initialized)."""
     return _redis_pool
+
+
+# ---------------------------------------------------------------------------
+# Portfolio-scoped dependencies
+# ---------------------------------------------------------------------------
+
+
+from uuid import UUID as _UUID
+from typing import Optional
+from fastapi import Query
+
+
+async def get_portfolio_id(
+    portfolio_id: Optional[str] = Query(None, description="Portfolio ID to scope data by"),
+    session=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> _UUID | None:
+    """Resolve portfolio_id from query param, falling back to user's default portfolio.
+
+    Returns None only if user has no portfolios at all (shouldn't happen).
+    """
+    from backend.models.orm import Portfolio
+    from sqlalchemy import select
+
+    if portfolio_id:
+        # Verify ownership
+        stmt = select(Portfolio.id).where(
+            Portfolio.id == _UUID(portfolio_id),
+            Portfolio.user_id == session.user_id,
+        )
+        result = await db.execute(stmt)
+        found = result.scalar_one_or_none()
+        return found  # None if not owned
+
+    # Default portfolio
+    stmt = select(Portfolio).where(
+        Portfolio.user_id == session.user_id,
+        Portfolio.is_default == True,
+    )
+    result = await db.execute(stmt)
+    portfolio = result.scalar_one_or_none()
+    if portfolio:
+        return portfolio.id
+
+    # First portfolio
+    stmt = select(Portfolio.id).where(Portfolio.user_id == session.user_id).limit(1)
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def get_portfolio_geo(
+    portfolio_id: _UUID | None = Depends(get_portfolio_id),
+    session=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> str:
+    """Resolve geo_id from active portfolio, falling back to user preferences."""
+    from backend.models.orm import Portfolio
+    from sqlalchemy import select
+
+    if portfolio_id:
+        stmt = select(Portfolio.geo_id).where(Portfolio.id == portfolio_id)
+        result = await db.execute(stmt)
+        geo = result.scalar_one_or_none()
+        if geo:
+            return geo
+
+    # Fallback to user preferences
+    from backend.models.orm import UserPreferences
+    stmt = select(UserPreferences.geography).where(
+        UserPreferences.user_id == session.user_id
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none() or "IN"

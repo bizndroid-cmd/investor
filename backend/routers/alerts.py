@@ -22,6 +22,7 @@ from backend.models.domain import (
     UpdateAlertRequest,
 )
 from backend.routers.auth import get_current_user
+from backend.dependencies import get_portfolio_id as get_portfolio_id_dep
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
@@ -35,9 +36,26 @@ def get_alert_service():
 async def list_alerts(
     session: Session = Depends(get_current_user),
     alert_service=Depends(get_alert_service),
+    portfolio_id=Depends(get_portfolio_id_dep),
+    db: AsyncSession = Depends(get_db),
 ) -> list[Alert]:
-    """Return all alerts (active and triggered) for the current user."""
-    return await alert_service.get_alerts(session.user_id)
+    """Return all alerts (active and triggered) for the current user, filtered by portfolio."""
+    alerts = await alert_service.get_alerts(session.user_id)
+
+    # Filter to tickers in this portfolio if portfolio_id provided
+    if portfolio_id and alerts:
+        from backend.models.orm import PortfolioSnapshot
+        from sqlalchemy import select, distinct
+        stmt = select(distinct(PortfolioSnapshot.ticker)).where(
+            PortfolioSnapshot.user_id == session.user_id,
+            PortfolioSnapshot.portfolio_id == portfolio_id,
+        )
+        result = await db.execute(stmt)
+        portfolio_tickers = {r[0] for r in result.all()}
+        if portfolio_tickers:
+            alerts = [a for a in alerts if a.ticker in portfolio_tickers]
+
+    return alerts
 
 
 @router.post("", response_model=Alert, status_code=status.HTTP_201_CREATED)
@@ -116,6 +134,7 @@ async def test_telegram(
 async def get_alert_suggestions(
     session: Session = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    portfolio_id=Depends(get_portfolio_id_dep),
 ) -> list[dict]:
     """Generate smart alert suggestions based on portfolio technicals.
 
@@ -128,10 +147,11 @@ async def get_alert_suggestions(
     from sqlalchemy import select, desc, distinct
     import asyncio
 
-    # Get user's tickers
-    stmt = select(distinct(PortfolioSnapshot.ticker)).where(
-        PortfolioSnapshot.user_id == session.user_id
-    )
+    # Get user's tickers scoped by portfolio
+    snapshot_filters = [PortfolioSnapshot.user_id == session.user_id]
+    if portfolio_id:
+        snapshot_filters.append(PortfolioSnapshot.portfolio_id == portfolio_id)
+    stmt = select(distinct(PortfolioSnapshot.ticker)).where(*snapshot_filters)
     result = await db.execute(stmt)
     tickers = [r[0] for r in result.all()]
 

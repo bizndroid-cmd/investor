@@ -173,7 +173,7 @@ class PortfolioSnapshotService:
                 pass
         return prices
 
-    async def capture_snapshot(self, user_id: UUID, portfolio: Portfolio) -> bool:
+    async def capture_snapshot(self, user_id: UUID, portfolio: Portfolio, portfolio_id=None) -> bool:
         """Capture a daily snapshot of the current portfolio state.
 
         Called after a portfolio refresh. Only stores one snapshot per ticker per day
@@ -201,6 +201,7 @@ class PortfolioSnapshotService:
         for holding in portfolio.holdings:
             snapshot = PortfolioSnapshot(
                 user_id=user_id,
+                portfolio_id=portfolio_id,
                 snapshot_date=today,
                 ticker=holding.ticker,
                 broker_id=holding.broker_id,
@@ -219,6 +220,7 @@ class PortfolioSnapshotService:
         # Store daily aggregate summary
         summary = PortfolioDailySummary(
             user_id=user_id,
+            portfolio_id=portfolio_id,
             snapshot_date=today,
             total_value=portfolio.total_value,
             total_invested=portfolio.total_invested,

@@ -20,6 +20,7 @@ from backend.models.orm import PredictionRecord, PortfolioSnapshot
 from backend.routers.auth import get_current_user
 from backend.services.screener_service import ScreenerService
 from backend.services.technical_analysis_service import TechnicalAnalysisService
+from backend.dependencies import get_portfolio_id as get_portfolio_id_dep, get_portfolio_geo
 
 logger = logging.getLogger(__name__)
 
@@ -233,9 +234,14 @@ async def get_research_card(
     ticker: str,
     session: Session = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    portfolio_id=Depends(get_portfolio_id_dep),
+    geo_id: str = Depends(get_portfolio_geo),
 ) -> dict:
     """Full per-stock research card combining technicals + fundamentals + AI accuracy."""
+    from backend.geo.ticker_resolver import resolve as resolve_ticker
     ticker = ticker.upper()
+    # Resolve ticker using portfolio's geography for yfinance calls
+    resolved_ticker = resolve_ticker(ticker, geo_id)
 
     # Fetch all data concurrently
     import asyncio
@@ -243,7 +249,7 @@ async def get_research_card(
     ta_svc = TechnicalAnalysisService()
     screener_svc = ScreenerService(db=db)
 
-    technicals_task = ta_svc.get_technicals(ticker)
+    technicals_task = ta_svc.get_technicals(ticker, geo_id=geo_id)
     fundamentals_task = screener_svc.get_fundamentals(ticker)
     prediction_task = _get_prediction_accuracy(db, session.user_id, ticker)
     holding_task = _get_holding_info(db, session.user_id, ticker)

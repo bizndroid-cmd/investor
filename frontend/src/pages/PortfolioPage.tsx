@@ -3,6 +3,7 @@ import { Wifi, Loader2, AlertTriangle, PieChart as PieChartIcon } from "lucide-r
 import { HoldingsTable } from "@/components/portfolio/HoldingsTable";
 import { TopPerformers } from "@/components/portfolio/TopPerformers";
 import { FundamentalsPanel } from "@/components/portfolio/FundamentalsPanel";
+import { NetWorthCard } from "@/components/portfolio/NetWorthCard";
 import { usePortfolio, useRefreshPortfolio } from "@/hooks/usePortfolio";
 import { usePriceSocket } from "@/hooks/usePriceSocket";
 import { useGeo } from "@/contexts/GeoContext";
@@ -127,6 +128,7 @@ export function PortfolioPage() {
 
         {/* RIGHT COLUMN — summary stat cards + performers stacked */}
         <div className="space-y-3 lg:sticky lg:top-20 lg:self-start">
+          <NetWorthCard />
           <SummaryCards />
           <TopPerformers />
         </div>
