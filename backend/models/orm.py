@@ -449,7 +449,7 @@ class Attachment(Base):
     file_name: Mapped[str] = mapped_column(String(200), nullable=False)
     file_id: Mapped[str] = mapped_column(String(200), nullable=False)
     file_size: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
-    mime_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     processed_at: Mapped[datetime | None] = mapped_column(sa.TIMESTAMP(timezone=True), nullable=True)
     records_imported: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
