@@ -65,14 +65,14 @@ async function fetchEarnings(portfolioId?: string): Promise<EarningsData> {
 }
 
 export function EarningsPage() {
-  const { activePortfolio } = useActivePortfolio();
+  const { activePortfolio, isLoading: portfolioLoading } = useActivePortfolio();
   const portfolioId = activePortfolio?.id;
 
   const { data, isLoading } = useQuery({
     queryKey: ["earnings", portfolioId],
     queryFn: () => fetchEarnings(portfolioId ?? undefined),
     staleTime: 5 * 60_000,
-    enabled: !!portfolioId,
+    enabled: !portfolioLoading,
   });
 
   if (isLoading) return <LoadingSkeleton />;
