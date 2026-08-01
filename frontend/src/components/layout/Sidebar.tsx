@@ -16,6 +16,7 @@ import {
   FileText,
   Wallet,
   Paperclip,
+  Settings2,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -32,6 +33,7 @@ const navItems = [
   { to: "/brokers", label: "Brokers", icon: Link2 },
   { to: "/alerts", label: "Alerts", icon: Bell },
   { to: "/attachments", label: "Attachments", icon: Paperclip },
+  { to: "/settings", label: "Settings", icon: Settings2 },
   { to: "/nerd-stats", label: "Nerd Stats", icon: Terminal },
 ];
 

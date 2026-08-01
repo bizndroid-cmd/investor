@@ -14,6 +14,7 @@ import { PredictionsPage } from "@/pages/PredictionsPage";
 import { InsightsPage } from "@/pages/InsightsPage";
 import { ResearchPage } from "@/pages/ResearchPage";
 import { NerdStatsPage } from "@/pages/NerdStatsPage";
+import { SettingsPage } from "@/pages/SettingsPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { ToastContainer } from "@/components/common/Toast";
 import { AlertNotification } from "@/components/alerts/AlertNotification";
@@ -48,6 +49,7 @@ function App() {
           <Route path="/brokers" element={<BrokersPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/attachments" element={<AttachmentsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/nerd-stats" element={<NerdStatsPage />} />
         </Route>
       </Routes>

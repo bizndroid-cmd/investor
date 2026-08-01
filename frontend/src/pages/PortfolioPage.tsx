@@ -5,9 +5,11 @@ import { TopPerformers } from "@/components/portfolio/TopPerformers";
 import { FundamentalsPanel } from "@/components/portfolio/FundamentalsPanel";
 import { usePortfolio, useRefreshPortfolio } from "@/hooks/usePortfolio";
 import { usePriceSocket } from "@/hooks/usePriceSocket";
+import { useGeo } from "@/contexts/GeoContext";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 
-// Sector map matching backend intelligence_service.py
+// Sector map — will be moved to backend-driven in future
+// For now kept in frontend for the donut chart
 const SECTOR_MAP: Record<string, string> = {
   RELIANCE: "Energy", ONGC: "Energy", IOC: "Energy", TATAPOWER: "Energy",
   HDFCBANK: "Banking", IDFCFIRSTB: "Banking", PNB: "Banking", YESBANK: "Banking",
@@ -30,9 +32,10 @@ const SECTOR_COLORS: Record<string, string> = {
   Chemicals: "#f97316", Mining: "#84cc16", Other: "#6b7280",
 };
 
-function formatCurrency(value: number | string): string {
+function formatCurrency(value: number | string, symbol: string = "₹", locale: string = "en-IN"): string {
   const num = typeof value === "string" ? parseFloat(value) : value;
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(num || 0);
+  const code = symbol === "$" ? "USD" : "INR";
+  return new Intl.NumberFormat(locale, { style: "currency", currency: code, maximumFractionDigits: 0 }).format(num || 0);
 }
 
 function formatPercent(value: number | string): string {
@@ -137,6 +140,7 @@ export function PortfolioPage() {
 // ============================================================
 function SummaryCards() {
   const { data: portfolio, isLoading } = usePortfolio();
+  const { currencySymbol, locale } = useGeo();
 
   if (isLoading) {
     return (
@@ -153,19 +157,19 @@ function SummaryCards() {
   const cards = [
     {
       label: "Market Value",
-      value: formatCurrency(portfolio.total_value),
+      value: formatCurrency(portfolio.total_value, currencySymbol, locale),
       sub: null,
       color: "",
     },
     {
       label: "Invested",
-      value: formatCurrency(portfolio.total_invested),
+      value: formatCurrency(portfolio.total_invested, currencySymbol, locale),
       sub: null,
       color: "",
     },
     {
       label: "Total P&L",
-      value: formatCurrency(portfolio.total_gain_loss),
+      value: formatCurrency(portfolio.total_gain_loss, currencySymbol, locale),
       sub: formatPercent(portfolio.total_gain_loss_percent),
       color: Number(portfolio.total_gain_loss) >= 0 ? "text-emerald-500" : "text-red-500",
     },
