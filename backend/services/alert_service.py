@@ -281,18 +281,22 @@ class AlertService(IAlertService):
         # Also send via Telegram
         try:
             from backend.services import telegram_service
+            from backend.geo.currency import format_currency as fmt_currency
 
             direction = "above" if triggered.condition == "above" else "below"
             emoji = "🚨" if triggered.condition == "above" else "🔻"
+            # Default to IN for now — will be resolved per-user in future
+            target_fmt = fmt_currency(float(triggered.target_price), "IN")
+            current_fmt = fmt_currency(float(triggered.triggered_price), "IN")
 
             tg_message = (
                 f"{emoji} <b>Price Alert Triggered!</b>\n\n"
                 f"<b>{triggered.ticker}</b> crossed your target\n\n"
-                f"  🎯 Target: ₹{triggered.target_price:,.2f}\n"
-                f"  📊 Current: ₹{triggered.triggered_price:,.2f}\n"
+                f"  🎯 Target: {target_fmt}\n"
+                f"  📊 Current: {current_fmt}\n"
                 f"  📋 Condition: Price went {direction}\n\n"
                 f"━━━━━━━━━━━━━━━\n"
-                f"<i>Review in app → Alerts section</i>"
+                f"<i>Review in app</i>"
             )
             await telegram_service.broadcast_to_all(tg_message)
         except Exception as e:

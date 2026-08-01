@@ -151,8 +151,10 @@ async def send_prediction_score(prediction_date: str, score: float, mood_accurac
     return await broadcast_to_all(message)
 
 
-async def send_portfolio_alert(change_pct: float, total_value: float) -> int:
+async def send_portfolio_alert(change_pct: float, total_value: float, geo_id: str = "IN") -> int:
     """Alert on significant portfolio movement (>2%)."""
+    from backend.geo.currency import format_currency as fmt_currency
+
     if change_pct > 0:
         direction = "🚀 Rally Mode"
         emoji = "💰"
@@ -162,10 +164,12 @@ async def send_portfolio_alert(change_pct: float, total_value: float) -> int:
         emoji = "🛡️"
         action = "Review stop-losses. Don't panic sell quality holdings"
 
+    formatted_value = fmt_currency(total_value, geo_id)
+
     message = (
         f"{emoji} <b>{direction}</b>\n\n"
         f"Your portfolio moved <b>{abs(change_pct):.1f}%</b> {'up' if change_pct > 0 else 'down'}\n"
-        f"Current value: <b>₹{total_value:,.0f}</b>\n\n"
+        f"Current value: <b>{formatted_value}</b>\n\n"
         f"💡 <i>{action}</i>\n\n"
         f"━━━━━━━━━━━━━━━\n"
         f"<i>Open app for detailed stock-by-stock analysis</i>"
