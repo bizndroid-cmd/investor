@@ -34,6 +34,7 @@ from backend.routers.auth import get_current_user, get_redis
 from backend.services.aggregator_service import AggregatorService
 from backend.services.market_data_service import MarketDataService
 from backend.dependencies import get_portfolio_id as get_portfolio_id_dep
+from sqlalchemy import or_
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +138,7 @@ async def get_portfolio(
         PortfolioDailySummary.snapshot_date == today,
     ]
     if portfolio_id:
-        summary_filters.append(PortfolioDailySummary.portfolio_id == portfolio_id)
+        summary_filters.append(or_(PortfolioDailySummary.portfolio_id == portfolio_id, PortfolioDailySummary.portfolio_id.is_(None)))
 
     stmt = select(PortfolioDailySummary).where(*summary_filters)
     result = await db.execute(stmt)
@@ -148,7 +149,7 @@ async def get_portfolio(
         from sqlalchemy import desc
         fallback_filters = [PortfolioDailySummary.user_id == session.user_id]
         if portfolio_id:
-            fallback_filters.append(PortfolioDailySummary.portfolio_id == portfolio_id)
+            fallback_filters.append(or_(PortfolioDailySummary.portfolio_id == portfolio_id, PortfolioDailySummary.portfolio_id.is_(None)))
         stmt = (
             select(PortfolioDailySummary)
             .where(*fallback_filters)
@@ -165,7 +166,7 @@ async def get_portfolio(
             PortfolioSnapshot.snapshot_date == existing_summary.snapshot_date,
         ]
         if portfolio_id:
-            holdings_filters.append(PortfolioSnapshot.portfolio_id == portfolio_id)
+            holdings_filters.append(or_(PortfolioSnapshot.portfolio_id == portfolio_id, PortfolioSnapshot.portfolio_id.is_(None)))
         holdings_stmt = select(PortfolioSnapshot).where(*holdings_filters)
         holdings_result = await db.execute(holdings_stmt)
         snapshot_holdings = holdings_result.scalars().all()
@@ -298,7 +299,7 @@ async def get_fundamentals(
     if not tickers:
         snapshot_filters = [PortfolioSnapshot.user_id == session.user_id]
         if portfolio_id:
-            snapshot_filters.append(PortfolioSnapshot.portfolio_id == portfolio_id)
+            snapshot_filters.append(or_(PortfolioSnapshot.portfolio_id == portfolio_id, PortfolioSnapshot.portfolio_id.is_(None)))
         stmt = select(distinct(PortfolioSnapshot.ticker)).where(*snapshot_filters)
         result = await db.execute(stmt)
         tickers = [r[0] for r in result.all()]
@@ -330,7 +331,7 @@ async def refresh_fundamentals(
     if not tickers:
         snapshot_filters = [PortfolioSnapshot.user_id == session.user_id]
         if portfolio_id:
-            snapshot_filters.append(PortfolioSnapshot.portfolio_id == portfolio_id)
+            snapshot_filters.append(or_(PortfolioSnapshot.portfolio_id == portfolio_id, PortfolioSnapshot.portfolio_id.is_(None)))
         stmt = select(distinct(PortfolioSnapshot.ticker)).where(*snapshot_filters)
         result = await db.execute(stmt)
         tickers = [r[0] for r in result.all()]

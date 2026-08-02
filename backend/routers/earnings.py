@@ -10,7 +10,7 @@ import logging
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select, desc, distinct
+from sqlalchemy import select, desc, distinct, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import get_db
@@ -33,12 +33,18 @@ async def get_earnings(
     """Full earnings breakdown: dividends, yield, cost basis, projections."""
 
     # Get latest portfolio snapshot
-    snapshot_filters = [PortfolioSnapshot.user_id == session.user_id]
+    # Include NULL portfolio_id rows (legacy data not yet backfilled)
+    from sqlalchemy import and_
+
+    snapshot_filter = PortfolioSnapshot.user_id == session.user_id
     if portfolio_id:
-        snapshot_filters.append(PortfolioSnapshot.portfolio_id == portfolio_id)
+        snapshot_filter = and_(
+            PortfolioSnapshot.user_id == session.user_id,
+            or_(PortfolioSnapshot.portfolio_id == portfolio_id, PortfolioSnapshot.portfolio_id.is_(None)),
+        )
     stmt = (
         select(PortfolioSnapshot)
-        .where(*snapshot_filters)
+        .where(snapshot_filter)
         .order_by(desc(PortfolioSnapshot.snapshot_date))
     )
     result = await db.execute(stmt)
