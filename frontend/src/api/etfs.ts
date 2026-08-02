@@ -6,7 +6,6 @@ export interface ETFHolding {
   name: string;
   quantity: number;
   buy_price: number;
-  buy_date: string | null;
   geo_id: string;
   currency: string;
   current_price: number;
@@ -18,6 +17,8 @@ export interface ETFHolding {
   day_change_pct: number;
   category: string;
   expense_ratio: number | null;
+  lots: { id: string; buy_date: string | null; quantity: number; buy_price: number }[];
+  lots_count: number;
 }
 
 export interface ETFListResponse {

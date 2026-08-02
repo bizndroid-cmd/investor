@@ -1,12 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useActivePortfolio } from "@/contexts/PortfolioContext";
+import { apiFetch } from "@/api/client";
 import {
   getETFs, addETF, deleteETF, getETFInsights, getETFDetails, getETFComparison,
   type ETFHolding, type ETFInsights, type AddETFBody,
 } from "@/api/etfs";
 import {
   Coins, Plus, Trash2, TrendingUp, TrendingDown, ChevronDown, ChevronUp,
-  Info, PieChart, Target, Loader2, X, BarChart3,
+  Info, PieChart, Target, Loader2, X, BarChart3, Upload, RefreshCw,
 } from "lucide-react";
 import { useState } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -50,6 +51,7 @@ export function ETFsPage() {
         )}
 
         <ETFExplainerCard />
+        <ETFImportCard />
       </div>
     </div>
   );
@@ -275,6 +277,7 @@ function HoldingRow({
             <div>
               <span className="font-mono font-semibold">{h.ticker}</span>
               <span className="ml-1.5 badge badge-info text-[9px]">{h.geo_id}</span>
+              {h.lots_count > 1 && <span className="ml-1 text-[9px] text-muted-foreground">({h.lots_count} lots)</span>}
               {h.name && <p className="text-[10px] text-muted-foreground truncate max-w-[140px]">{h.name}</p>}
             </div>
           </button>
@@ -296,93 +299,85 @@ function HoldingRow({
           </button>
         </td>
       </tr>
-      {isExpanded && <ExpandedDetail holdingId={h.id} currency={currency} />}
+      {isExpanded && <ExpandedLots holding={h} currency={currency} />}
     </>
   );
 }
 
-function ExpandedDetail({ holdingId, currency }: { holdingId: string; currency: string }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ["etf-detail", holdingId],
-    queryFn: () => getETFDetails(holdingId),
+function ExpandedLots({ holding, currency }: { holding: ETFHolding; currency: string }) {
+  const { data: detail, isLoading: detailLoading } = useQuery({
+    queryKey: ["etf-detail", holding.id],
+    queryFn: () => getETFDetails(holding.id),
     staleTime: 10 * 60_000,
   });
-
-  if (isLoading) {
-    return (
-      <tr>
-        <td colSpan={8} className="py-4 text-center">
-          <Loader2 className="h-4 w-4 animate-spin mx-auto text-muted-foreground" />
-        </td>
-      </tr>
-    );
-  }
-
-  if (!data) return null;
 
   return (
     <tr className="bg-secondary/10">
       <td colSpan={8} className="py-4 px-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-          <div>
-            <span className="text-[10px] text-muted-foreground uppercase">Category</span>
-            <p className="font-medium mt-0.5">{data.category || "—"}</p>
-          </div>
-          <div>
-            <span className="text-[10px] text-muted-foreground uppercase">Expense Ratio</span>
-            <p className="font-medium mt-0.5">
-              {data.expense_ratio != null ? `${(data.expense_ratio * 100).toFixed(2)}%` : "—"}
-            </p>
-          </div>
-          <div>
-            <span className="text-[10px] text-muted-foreground uppercase">Fund Family</span>
-            <p className="font-medium mt-0.5">{data.fund_family || "—"}</p>
-          </div>
-          <div>
-            <span className="text-[10px] text-muted-foreground uppercase">Total Assets</span>
-            <p className="font-medium mt-0.5">
-              {data.total_assets ? `${currency}${(data.total_assets / 1e9).toFixed(1)}B` : "—"}
-            </p>
+        {/* Purchase lots */}
+        <div className="mb-3">
+          <span className="text-[10px] text-muted-foreground uppercase font-medium">Purchase History</span>
+          <div className="mt-1.5 space-y-1">
+            {holding.lots.map((lot, i) => (
+              <div key={lot.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-muted/30">
+                <span className="text-muted-foreground">
+                  {lot.buy_date ? new Date(lot.buy_date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : `Lot ${i + 1}`}
+                </span>
+                <span>
+                  {lot.quantity} units @ {currency}{lot.buy_price.toLocaleString()}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Returns */}
-        {data.returns && Object.keys(data.returns).length > 0 && (
-          <div className="mt-3 pt-3 border-t border-border/50">
-            <span className="text-[10px] text-muted-foreground uppercase">CAGR Returns</span>
-            <div className="flex gap-4 mt-1.5">
-              {[
-                { key: "return_1y", label: "1Y" },
-                { key: "return_3y", label: "3Y" },
-                { key: "return_5y", label: "5Y" },
-              ].map(({ key, label }) => {
-                const val = data.returns[key];
-                if (val == null) return null;
-                const color = val >= 0 ? "text-emerald-500" : "text-red-500";
-                return (
-                  <div key={key} className="text-center">
-                    <p className="text-[10px] text-muted-foreground">{label}</p>
-                    <p className={`font-semibold ${color}`}>{val.toFixed(1)}%</p>
-                  </div>
-                );
-              })}
+        {/* ETF details from API */}
+        {detailLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        ) : detail ? (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs border-t border-border/50 pt-3">
+              <div>
+                <span className="text-[10px] text-muted-foreground uppercase">Category</span>
+                <p className="font-medium mt-0.5">{detail.category || "—"}</p>
+              </div>
+              <div>
+                <span className="text-[10px] text-muted-foreground uppercase">Expense Ratio</span>
+                <p className="font-medium mt-0.5">
+                  {detail.expense_ratio != null ? `${(detail.expense_ratio * 100).toFixed(2)}%` : "—"}
+                </p>
+              </div>
+              <div>
+                <span className="text-[10px] text-muted-foreground uppercase">Fund Family</span>
+                <p className="font-medium mt-0.5">{detail.fund_family || "—"}</p>
+              </div>
+              <div>
+                <span className="text-[10px] text-muted-foreground uppercase">Total Assets</span>
+                <p className="font-medium mt-0.5">
+                  {detail.total_assets ? `${currency}${(detail.total_assets / 1e9).toFixed(1)}B` : "—"}
+                </p>
+              </div>
             </div>
-          </div>
-        )}
-
-        {/* Top Holdings */}
-        {data.top_holdings && data.top_holdings.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-border/50">
-            <span className="text-[10px] text-muted-foreground uppercase">Top Holdings</span>
-            <div className="flex flex-wrap gap-2 mt-1.5">
-              {data.top_holdings.slice(0, 5).map((th) => (
-                <span key={th.symbol} className="badge bg-muted text-muted-foreground">
-                  {th.symbol || th.name} ({th.weight.toFixed(1)}%)
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+            {detail.returns && Object.keys(detail.returns).length > 0 && (
+              <div className="mt-3 pt-3 border-t border-border/50">
+                <span className="text-[10px] text-muted-foreground uppercase">CAGR Returns</span>
+                <div className="flex gap-4 mt-1.5">
+                  {[{ key: "return_1y", label: "1Y" }, { key: "return_3y", label: "3Y" }, { key: "return_5y", label: "5Y" }].map(({ key, label }) => {
+                    const val = detail.returns[key];
+                    if (val == null) return null;
+                    const color = val >= 0 ? "text-emerald-500" : "text-red-500";
+                    return (
+                      <div key={key} className="text-center">
+                        <p className="text-[10px] text-muted-foreground">{label}</p>
+                        <p className={`font-semibold ${color}`}>{val.toFixed(1)}%</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        ) : null}
       </td>
     </tr>
   );
@@ -686,6 +681,84 @@ function ComparisonChart({ portfolioId }: { portfolioId?: string }) {
         <div className="h-48 flex items-center justify-center text-xs text-muted-foreground">
           No historical data available. Add ETFs with buy dates to see comparison.
         </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// ETF IMPORT FROM TELEGRAM
+// ============================================================
+function ETFImportCard() {
+  const queryClient = useQueryClient();
+  const { data: attachments } = useQuery({
+    queryKey: ["attachments"],
+    queryFn: () => apiFetch<any[]>("/telegram/attachments"),
+    staleTime: 30_000,
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: () => apiFetch<any>("/telegram/sync", { method: "POST" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["attachments"] }),
+  });
+
+  const processMutation = useMutation({
+    mutationFn: (id: string) => apiFetch<any>(`/telegram/attachments/${id}/process`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["attachments"] });
+      queryClient.invalidateQueries({ queryKey: ["etfs"] });
+      queryClient.invalidateQueries({ queryKey: ["etf-insights"] });
+    },
+  });
+
+  const pendingAttachments = (attachments || []).filter((a: any) => a.status === "pending");
+
+  return (
+    <div className="bento-card">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-bold flex items-center gap-2">
+          <Upload className="h-4 w-4 text-blue-500" />
+          Import from Telegram
+        </h3>
+        <button
+          onClick={() => syncMutation.mutate()}
+          disabled={syncMutation.isPending}
+          className="btn-ghost text-xs border"
+        >
+          <RefreshCw className={`h-3 w-3 mr-1.5 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+          Pull Documents
+        </button>
+      </div>
+
+      {pendingAttachments.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Pending documents — select to process:</p>
+          {pendingAttachments.map((a: any) => (
+            <button
+              key={a.id}
+              onClick={() => processMutation.mutate(a.id)}
+              disabled={processMutation.isPending}
+              className="w-full flex items-center justify-between p-3 rounded-lg border hover:border-primary/30 hover:bg-primary/5 transition-colors text-left"
+            >
+              <div className="flex items-center gap-2">
+                <Upload className="h-4 w-4 text-primary" />
+                <div>
+                  <p className="text-xs font-medium">{a.file_name}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {a.file_size ? `${(a.file_size / 1024).toFixed(0)} KB` : ""} · {new Date(a.received_at).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] text-primary font-medium">
+                {processMutation.isPending ? "Processing..." : "Process →"}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Send ETF trade reports via Telegram bot, then pull here to import.
+        </p>
       )}
     </div>
   );

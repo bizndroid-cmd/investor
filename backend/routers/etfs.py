@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import date
+from datetime import date
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID, uuid4
@@ -76,56 +77,85 @@ async def list_etf_holdings(
     if not holdings:
         return {"has_data": False, "holdings": [], "total_value_inr": 0, "total_value_usd": 0}
 
-    # Fetch market data in parallel
-    tasks = [
-        etf_service.get_etf_market_data(h.ticker, h.geo_id)
-        for h in holdings
+    # Group holdings by (ticker, geo_id) — merge quantities, compute avg price
+    from collections import defaultdict
+    groups: dict[tuple[str, str], list] = defaultdict(list)
+    for h in holdings:
+        groups[(h.ticker, h.geo_id)].append(h)
+
+    # Fetch market data per unique ticker (not per lot)
+    unique_tickers = list(groups.keys())
+    market_tasks = [
+        etf_service.get_etf_market_data(ticker, geo_id)
+        for ticker, geo_id in unique_tickers
     ]
-    market_results = await asyncio.gather(*tasks, return_exceptions=True)
+    market_results = await asyncio.gather(*market_tasks, return_exceptions=True)
+    market_map = {}
+    for (ticker, geo_id), mkt in zip(unique_tickers, market_results):
+        if isinstance(mkt, Exception) or mkt is None:
+            mkt = {}
+        market_map[(ticker, geo_id)] = mkt
 
     enriched = []
     total_value_inr = Decimal("0")
     total_value_usd = Decimal("0")
 
-    for h, mkt in zip(holdings, market_results):
-        if isinstance(mkt, Exception) or mkt is None:
-            mkt = {}
-
+    for (ticker, geo_id), lots in groups.items():
+        mkt = market_map.get((ticker, geo_id), {})
         current_price = Decimal(str(mkt.get("current_price", 0)))
-        current_value = current_price * h.quantity
-        invested_value = h.buy_price * h.quantity
-        gain_loss = current_value - invested_value
-        gain_loss_pct = (gain_loss / invested_value * 100) if invested_value > 0 else Decimal("0")
 
-        if h.currency == "INR":
+        # Aggregate across lots
+        total_qty = sum(h.quantity for h in lots)
+        total_invested = sum(h.buy_price * h.quantity for h in lots)
+        avg_buy_price = (total_invested / total_qty) if total_qty > 0 else Decimal("0")
+        current_value = current_price * total_qty
+        gain_loss = current_value - total_invested
+        gain_loss_pct = (gain_loss / total_invested * 100) if total_invested > 0 else Decimal("0")
+
+        currency = lots[0].currency
+        if currency == "INR":
             total_value_inr += current_value
         else:
             total_value_usd += current_value
 
+        # Individual lots for expansion
+        lot_details = [
+            {
+                "id": str(h.id),
+                "buy_date": h.buy_date.isoformat() if h.buy_date else None,
+                "quantity": float(h.quantity),
+                "buy_price": float(h.buy_price),
+            }
+            for h in sorted(lots, key=lambda x: x.buy_date or date(2000, 1, 1))
+        ]
+
+        name = mkt.get("name", "")
+        # Update name on lots if missing
+        for h in lots:
+            if not h.name and name:
+                h.name = name
+                db.add(h)
+
         enriched.append({
-            "id": str(h.id),
-            "ticker": h.ticker,
-            "name": h.name or mkt.get("name", ""),
-            "quantity": float(h.quantity),
-            "buy_price": float(h.buy_price),
-            "buy_date": h.buy_date.isoformat() if h.buy_date else None,
-            "geo_id": h.geo_id,
-            "currency": h.currency,
+            "id": str(lots[0].id),  # Use first lot id as group id
+            "ticker": ticker,
+            "name": lots[0].name or name,
+            "quantity": float(total_qty),
+            "buy_price": round(float(avg_buy_price), 2),
+            "geo_id": geo_id,
+            "currency": currency,
             "current_price": float(current_price),
             "current_value": round(float(current_value), 2),
-            "invested_value": round(float(invested_value), 2),
+            "invested_value": round(float(total_invested), 2),
             "gain_loss": round(float(gain_loss), 2),
             "gain_loss_pct": round(float(gain_loss_pct), 2),
             "day_change": mkt.get("day_change", 0),
             "day_change_pct": mkt.get("day_change_pct", 0),
             "category": mkt.get("category", ""),
             "expense_ratio": mkt.get("expense_ratio"),
+            "lots": lot_details,
+            "lots_count": len(lots),
         })
-
-        # Update name if missing
-        if not h.name and mkt.get("name"):
-            h.name = mkt["name"]
-            db.add(h)
 
     await db.commit()
 
@@ -147,15 +177,17 @@ async def add_etf_holding(
     """Add a new ETF holding."""
     currency = "INR" if body.geo_id == "IN" else "USD"
 
-    # Check for duplicate
-    stmt = select(ETFHolding).where(
-        ETFHolding.user_id == session.user_id,
-        ETFHolding.ticker == body.ticker.upper(),
-        ETFHolding.geo_id == body.geo_id,
-    )
-    existing = (await db.execute(stmt)).scalar_one_or_none()
-    if existing:
-        raise HTTPException(status_code=409, detail=f"ETF {body.ticker} ({body.geo_id}) already exists")
+    # Block duplicate: same ticker + same date
+    if body.buy_date:
+        stmt = select(ETFHolding).where(
+            ETFHolding.user_id == session.user_id,
+            ETFHolding.ticker == body.ticker.upper(),
+            ETFHolding.geo_id == body.geo_id,
+            ETFHolding.buy_date == body.buy_date,
+        )
+        existing = (await db.execute(stmt)).scalar_one_or_none()
+        if existing:
+            raise HTTPException(status_code=409, detail=f"ETF {body.ticker} ({body.geo_id}) already exists for date {body.buy_date}")
 
     holding = ETFHolding(
         id=uuid4(),
