@@ -673,8 +673,8 @@ function TradeImportCard() {
           </div>
         )}
 
-        {/* Document picker */}
-        {(showPicker || pendingAttachments.length > 0) && !hasTradeData && (
+        {/* Document picker — show when pending attachments exist */}
+        {pendingAttachments.length > 0 && (
           <div className="mt-3 space-y-2 animate-fade-in">
             <p className="text-xs font-medium">Select a document to process:</p>
             {pendingAttachments.map((a: any) => (
@@ -693,12 +693,9 @@ function TradeImportCard() {
                     </p>
                   </div>
                 </div>
-                <span className="text-[10px] text-primary font-medium">Process</span>
+                <span className="text-[10px] text-primary font-medium">Process →</span>
               </button>
             ))}
-            {pendingAttachments.length === 0 && (
-              <p className="text-xs text-muted-foreground">No pending documents. Send one via Telegram first.</p>
-            )}
           </div>
         )}
 
