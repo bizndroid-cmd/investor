@@ -1,4 +1,4 @@
-import { RefreshCw, User, Sun, Moon, ChevronDown } from "lucide-react";
+import { RefreshCw, Sun, Moon, ChevronDown, LogOut } from "lucide-react";
 import { useRefreshPortfolio } from "@/hooks/usePortfolio";
 import { useSocketStore } from "@/stores/socketStore";
 import { useActivePortfolio } from "@/contexts/PortfolioContext";
@@ -55,10 +55,15 @@ export function TopBar() {
         </button>
 
         <button
-          aria-label="User menu"
-          className="btn-icon"
+          onClick={() => {
+            localStorage.removeItem("access_token");
+            localStorage.removeItem("refresh_token");
+            window.location.reload();
+          }}
+          aria-label="Logout"
+          className="btn-icon text-muted-foreground hover:text-destructive"
         >
-          <User className="h-4 w-4" />
+          <LogOut className="h-4 w-4" />
         </button>
       </div>
     </header>
