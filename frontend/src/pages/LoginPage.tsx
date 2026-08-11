@@ -8,8 +8,9 @@ interface AuthTokens {
 }
 
 export function LoginPage({ onLogin }: { onLogin: () => void }) {
-  const [email, setEmail] = useState("test@example.com");
-  const [password, setPassword] = useState("password123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [isRegister, setIsRegister] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -17,6 +18,17 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (isRegister && password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -73,6 +85,7 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
                 onChange={(e) => setEmail(e.target.value)}
                 className="input-field"
                 placeholder="you@example.com"
+                autoComplete="email"
               />
             </div>
 
@@ -88,9 +101,29 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="input-field"
-                placeholder="••••••••"
+                placeholder="Min 8 characters"
+                autoComplete={isRegister ? "new-password" : "current-password"}
               />
             </div>
+
+            {isRegister && (
+              <div>
+                <label htmlFor="confirmPassword" className="block text-xs font-medium mb-1.5 text-muted-foreground">
+                  Confirm Password
+                </label>
+                <input
+                  id="confirmPassword"
+                  type="password"
+                  required
+                  minLength={8}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="input-field"
+                  placeholder="Repeat password"
+                  autoComplete="new-password"
+                />
+              </div>
+            )}
 
             {error && (
               <p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2" role="alert">
@@ -121,6 +154,7 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
               onClick={() => {
                 setIsRegister(!isRegister);
                 setError(null);
+                setConfirmPassword("");
               }}
               className="text-primary font-medium hover:underline transition-colors"
             >
