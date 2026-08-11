@@ -20,6 +20,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     mfa_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa.text("true"))
     created_at: Mapped[datetime] = mapped_column(
         sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
     )

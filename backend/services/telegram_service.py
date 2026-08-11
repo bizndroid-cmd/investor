@@ -271,3 +271,146 @@ def _get_grade(score: float) -> str:
     if score >= 45: return "C"
     if score >= 35: return "D"
     return "F"
+
+
+# ===========================================================================
+# Registration Approval via Telegram
+# ===========================================================================
+
+
+async def send_approval_request(user_id: str, email: str) -> bool:
+    """Send registration approval request with inline buttons to admin.
+
+    Sends to all allowed chat IDs. Buttons: Approve / Deny.
+    """
+    if not is_configured():
+        logger.debug("Telegram not configured — auto-approving user")
+        # Auto-approve if Telegram not configured
+        await _auto_approve_user(user_id)
+        return True
+
+    allowed = _get_allowed_chat_ids()
+    if not allowed:
+        logger.debug("No allowed chat IDs — auto-approving user")
+        await _auto_approve_user(user_id)
+        return True
+
+    message = (
+        f"🔐 <b>New Registration Request</b>\n\n"
+        f"📧 Email: <code>{email}</code>\n"
+        f"🆔 User ID: <code>{user_id[:8]}...</code>\n"
+        f"🕐 Time: {datetime.now(timezone.utc).strftime('%b %d, %H:%M UTC')}\n\n"
+        f"Approve this user?"
+    )
+
+    # Inline keyboard with callback data
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "✅ Approve", "callback_data": f"approve:{user_id}"},
+                {"text": "❌ Deny", "callback_data": f"deny:{user_id}"},
+            ]
+        ]
+    }
+
+    success = 0
+    for chat_id in allowed:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    f"{TELEGRAM_API}/sendMessage",
+                    json={
+                        "chat_id": chat_id,
+                        "text": message,
+                        "parse_mode": "HTML",
+                        "reply_markup": keyboard,
+                    },
+                )
+                if response.status_code == 200:
+                    success += 1
+                else:
+                    logger.warning("Approval request send failed: %s", response.text[:200])
+        except Exception as e:
+            logger.error("Approval request send error: %s", str(e))
+
+    return success > 0
+
+
+async def handle_approval_callback(callback_data: str, from_chat_id: str) -> str:
+    """Handle approval/deny callback from Telegram inline button.
+
+    Returns response message to send back.
+    Security: Only processes callbacks from allowed chat IDs.
+    """
+    allowed = _get_allowed_chat_ids()
+    if from_chat_id not in allowed:
+        logger.warning("Unauthorized approval callback from chat_id: %s", from_chat_id)
+        return "⚠️ Unauthorized"
+
+    parts = callback_data.split(":", 1)
+    if len(parts) != 2:
+        return "❌ Invalid callback data"
+
+    action, user_id = parts
+
+    if action == "approve":
+        success = await _approve_user(user_id)
+        if success:
+            return f"✅ User approved! They can now log in."
+        return "❌ Failed to approve (user not found)"
+    elif action == "deny":
+        success = await _deny_user(user_id)
+        if success:
+            return f"🚫 User denied and removed."
+        return "❌ Failed to deny (user not found)"
+
+    return "❌ Unknown action"
+
+
+async def _approve_user(user_id: str) -> bool:
+    """Set user is_approved = True."""
+    try:
+        from backend.database import AsyncSessionLocal
+        from backend.models.orm import User
+        from sqlalchemy import select
+        from uuid import UUID
+
+        async with AsyncSessionLocal() as db:
+            stmt = select(User).where(User.id == UUID(user_id))
+            result = await db.execute(stmt)
+            user = result.scalar_one_or_none()
+            if not user:
+                return False
+            user.is_approved = True
+            await db.commit()
+            return True
+    except Exception as e:
+        logger.error("Failed to approve user %s: %s", user_id, str(e))
+        return False
+
+
+async def _deny_user(user_id: str) -> bool:
+    """Delete the denied user entirely."""
+    try:
+        from backend.database import AsyncSessionLocal
+        from backend.models.orm import User
+        from sqlalchemy import select
+        from uuid import UUID
+
+        async with AsyncSessionLocal() as db:
+            stmt = select(User).where(User.id == UUID(user_id))
+            result = await db.execute(stmt)
+            user = result.scalar_one_or_none()
+            if not user:
+                return False
+            await db.delete(user)
+            await db.commit()
+            return True
+    except Exception as e:
+        logger.error("Failed to deny user %s: %s", user_id, str(e))
+        return False
+
+
+async def _auto_approve_user(user_id: str) -> None:
+    """Auto-approve when Telegram not configured."""
+    await _approve_user(user_id)

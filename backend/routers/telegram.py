@@ -284,3 +284,78 @@ async def get_purchase_dates_endpoint(
     from backend.services.trade_report_parser import get_purchase_dates
     dates = await get_purchase_dates(db, session.user_id)
     return {"has_data": bool(dates), "purchase_dates": dates}
+
+
+# ===========================================================================
+# Telegram Webhook for approval callbacks (no auth required — verified by chat_id)
+# ===========================================================================
+
+
+@router.post("/webhook")
+async def telegram_webhook(body: dict) -> dict:
+    """Handle incoming Telegram webhook updates (callback queries for approval).
+
+    This endpoint is called by Telegram when admin clicks Approve/Deny buttons.
+    No user auth required — security is via allowed chat_id verification.
+    """
+    from backend.services.telegram_service import handle_approval_callback, send_message
+
+    # Handle callback query (inline button press)
+    callback_query = body.get("callback_query")
+    if callback_query:
+        callback_data = callback_query.get("data", "")
+        from_chat = callback_query.get("message", {}).get("chat", {})
+        from_chat_id = str(from_chat.get("id", ""))
+        callback_id = callback_query.get("id", "")
+
+        # Process approval/denial
+        response_msg = await handle_approval_callback(callback_data, from_chat_id)
+
+        # Answer the callback query (removes loading spinner on button)
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{settings.telegram_bot_token}/answerCallbackQuery",
+                    json={"callback_query_id": callback_id, "text": response_msg[:200]},
+                )
+        except Exception:
+            pass
+
+        # Send confirmation message
+        await send_message(from_chat_id, response_msg)
+
+        return {"ok": True}
+
+    return {"ok": True}
+
+
+@router.post("/setup-webhook")
+async def setup_telegram_webhook(
+    session: Session = Depends(get_current_user),
+) -> dict:
+    """Set up the Telegram webhook URL for this server.
+
+    Call this once after deployment to register the webhook with Telegram.
+    Requires the DOMAIN env var to be set.
+    """
+    if not settings.telegram_bot_token:
+        return {"error": "TELEGRAM_BOT_TOKEN not configured"}
+
+    # Use domain from settings or construct from request
+    domain = getattr(settings, "domain", None) or "localhost"
+    webhook_url = f"https://{domain}/api/telegram/webhook"
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"https://api.telegram.org/bot{settings.telegram_bot_token}/setWebhook",
+                json={"url": webhook_url, "allowed_updates": ["callback_query"]},
+            )
+            data = response.json()
+            return {
+                "success": data.get("ok", False),
+                "webhook_url": webhook_url,
+                "description": data.get("description", ""),
+            }
+    except Exception as e:
+        return {"error": str(e)}

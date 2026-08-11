@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -20,6 +21,8 @@ from backend.interfaces.auth_service import IAuthService
 from backend.models.domain import AuthTokens, MFASetupData, Session
 from backend.models.orm import Session as SessionORM
 from backend.models.orm import User
+
+logger = logging.getLogger(__name__)
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
@@ -39,7 +42,10 @@ class AuthService(IAuthService):
         self._redis = redis
 
     async def register(self, email: str, password: str) -> None:
-        """Register a new user with the given email and password."""
+        """Register a new user with the given email and password.
+        
+        User is created with is_approved=False. Admin must approve via Telegram.
+        """
         # Check if email already exists
         result = await self._db.execute(select(User).where(User.email == email))
         existing_user = result.scalar_one_or_none()
@@ -49,11 +55,18 @@ class AuthService(IAuthService):
                 detail="A user with this email already exists.",
             )
 
-        # Hash password and create user
+        # Hash password and create user (unapproved)
         password_hash = pwd_context.hash(password)
-        user = User(id=uuid4(), email=email, password_hash=password_hash)
+        user = User(id=uuid4(), email=email, password_hash=password_hash, is_approved=False)
         self._db.add(user)
         await self._db.commit()
+
+        # Send Telegram approval request to admin
+        try:
+            from backend.services.telegram_service import send_approval_request
+            await send_approval_request(user_id=str(user.id), email=email)
+        except Exception as e:
+            logger.warning("Failed to send Telegram approval request: %s", str(e))
 
     async def login(
         self,
@@ -69,6 +82,13 @@ class AuthService(IAuthService):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password.",
+            )
+
+        # Check if account is approved
+        if not user.is_approved:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account pending approval. You'll be notified once approved.",
             )
 
         # Check MFA if enabled
