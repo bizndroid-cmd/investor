@@ -125,12 +125,31 @@ async def lifespan(app: FastAPI):
         analyzer=news_analyzer,
     )
 
+    # Start Telegram approval callback poller
+    async def _approval_poll_loop():
+        from backend.services.telegram_service import poll_approval_callbacks
+        while True:
+            try:
+                await poll_approval_callbacks()
+            except Exception:
+                pass
+            await asyncio.sleep(10)
+
+    _approval_poller_task = asyncio.create_task(_approval_poll_loop())
+
     logger.info("Application started successfully")
 
     yield
 
     # --- Shutdown ---
     logger.info("Shutting down application...")
+
+    # Stop approval poller
+    _approval_poller_task.cancel()
+    try:
+        await _approval_poller_task
+    except asyncio.CancelledError:
+        pass
 
     # Stop price poller
     if _poller_task and not _poller_task.done():

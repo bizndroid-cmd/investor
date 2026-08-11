@@ -414,3 +414,66 @@ async def _deny_user(user_id: str) -> bool:
 async def _auto_approve_user(user_id: str) -> None:
     """Auto-approve when Telegram not configured."""
     await _approve_user(user_id)
+
+
+# ===========================================================================
+# Polling-based approval callback handler (no HTTPS needed)
+# ===========================================================================
+
+_last_update_id: int = 0
+
+
+async def poll_approval_callbacks() -> int:
+    """Poll Telegram for callback queries (Approve/Deny button presses).
+
+    Called periodically by a background task. Returns count of processed callbacks.
+    """
+    global _last_update_id
+
+    if not is_configured():
+        return 0
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            params = {"offset": _last_update_id + 1, "timeout": 5, "allowed_updates": ["callback_query"]}
+            response = await client.get(f"{TELEGRAM_API}/getUpdates", params=params)
+
+            if response.status_code != 200:
+                return 0
+
+            data = response.json()
+            updates = data.get("result", [])
+
+            processed = 0
+            for update in updates:
+                update_id = update.get("update_id", 0)
+                if update_id > _last_update_id:
+                    _last_update_id = update_id
+
+                callback_query = update.get("callback_query")
+                if callback_query:
+                    callback_data = callback_query.get("data", "")
+                    from_chat = callback_query.get("message", {}).get("chat", {})
+                    from_chat_id = str(from_chat.get("id", ""))
+                    callback_id = callback_query.get("id", "")
+
+                    # Process
+                    response_msg = await handle_approval_callback(callback_data, from_chat_id)
+
+                    # Answer callback query
+                    try:
+                        await client.post(
+                            f"{TELEGRAM_API}/answerCallbackQuery",
+                            json={"callback_query_id": callback_id, "text": response_msg[:200]},
+                        )
+                    except Exception:
+                        pass
+
+                    # Send confirmation
+                    await send_message(from_chat_id, response_msg)
+                    processed += 1
+
+            return processed
+    except Exception as e:
+        logger.debug("Approval poll error: %s", str(e))
+        return 0
