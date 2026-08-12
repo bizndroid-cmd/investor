@@ -1,24 +1,17 @@
 import { NavLink } from "react-router-dom";
 import {
   BarChart3,
-  ShoppingCart,
   Bell,
   Link2,
-  GitCompare,
-  Newspaper,
   Menu,
   X,
-  Terminal,
-  Brain,
-  Lightbulb,
   Crosshair,
-  Zap,
   FileText,
   Wallet,
-  Paperclip,
   Settings2,
   Coins,
   Target,
+  Zap,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -27,18 +20,11 @@ const navItems = [
   { to: "/earnings", label: "Earnings", icon: Wallet },
   { to: "/etfs", label: "ETFs", icon: Coins },
   { to: "/goals", label: "Goals", icon: Target },
-  { to: "/insights", label: "Smart Insights", icon: Lightbulb },
-  { to: "/briefing", label: "Portfolio Briefing", icon: FileText },
-  { to: "/research", label: "Stock Research", icon: Crosshair },
-  { to: "/predictions", label: "AI Predictions", icon: Brain },
-  { to: "/news", label: "Detailed News", icon: Newspaper },
-  { to: "/orders", label: "Orders", icon: ShoppingCart },
-  { to: "/comparison", label: "Comparison", icon: GitCompare },
-  { to: "/brokers", label: "Brokers", icon: Link2 },
+  { to: "/research", label: "Research", icon: Crosshair },
+  { to: "/briefing", label: "Daily Briefing", icon: FileText },
   { to: "/alerts", label: "Alerts", icon: Bell },
-  { to: "/attachments", label: "Attachments", icon: Paperclip },
+  { to: "/brokers", label: "Brokers", icon: Link2 },
   { to: "/settings", label: "Settings", icon: Settings2 },
-  { to: "/nerd-stats", label: "Nerd Stats", icon: Terminal },
 ];
 
 export function Sidebar() {

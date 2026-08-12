@@ -6,7 +6,6 @@ import { OrdersPage } from "@/pages/OrdersPage";
 import { AlertsPage } from "@/pages/AlertsPage";
 import { BrokersPage } from "@/pages/BrokersPage";
 import { ComparisonPage } from "@/pages/ComparisonPage";
-import { BriefingPage } from "@/pages/BriefingPage";
 import { DetailedNewsPage } from "@/pages/DetailedNewsPage";
 import { ETFsPage } from "@/pages/ETFsPage";
 import { GoalsPage } from "@/pages/GoalsPage";
@@ -17,6 +16,7 @@ import { InsightsPage } from "@/pages/InsightsPage";
 import { ResearchPage } from "@/pages/ResearchPage";
 import { NerdStatsPage } from "@/pages/NerdStatsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { DailyBriefingPage } from "@/pages/DailyBriefingPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { ToastContainer } from "@/components/common/Toast";
 import { AlertNotification } from "@/components/alerts/AlertNotification";
@@ -39,22 +39,25 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<DashboardLayout />}>
+          {/* Primary pages (in sidebar) */}
           <Route path="/" element={<PortfolioPage />} />
           <Route path="/earnings" element={<EarningsPage />} />
           <Route path="/etfs" element={<ETFsPage />} />
           <Route path="/goals" element={<GoalsPage />} />
-          <Route path="/insights" element={<InsightsPage />} />
-          <Route path="/briefing" element={<BriefingPage />} />
           <Route path="/research" element={<ResearchPage />} />
-          <Route path="/predictions" element={<PredictionsPage />} />
-          <Route path="/news" element={<DetailedNewsPage />} />
+          <Route path="/briefing" element={<DailyBriefingPage />} />
+          <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/brokers" element={<BrokersPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+
+          {/* Hidden pages (accessible via URL, not in sidebar) */}
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/comparison" element={<ComparisonPage />} />
-          <Route path="/brokers" element={<BrokersPage />} />
-          <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/attachments" element={<AttachmentsPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/nerd-stats" element={<NerdStatsPage />} />
+          <Route path="/insights" element={<InsightsPage />} />
+          <Route path="/predictions" element={<PredictionsPage />} />
+          <Route path="/news" element={<DetailedNewsPage />} />
         </Route>
       </Routes>
       <ToastContainer />
