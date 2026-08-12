@@ -11,7 +11,6 @@ import {
   Settings2,
   Coins,
   Target,
-  Zap,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -58,10 +57,13 @@ export function Sidebar() {
       >
         {/* Logo */}
         <div className="flex h-14 items-center gap-2.5 border-b px-5">
-          <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-primary/10">
-            <Zap className="h-4 w-4 text-primary" />
+          <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-emerald-500">
+            <svg viewBox="0 0 24 24" className="h-4 w-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none" />
+            </svg>
           </div>
-          <span className="text-sm font-bold tracking-tight">Investor</span>
+          <span className="text-sm font-bold tracking-tight">Financial Compass</span>
         </div>
 
         {/* Navigation */}

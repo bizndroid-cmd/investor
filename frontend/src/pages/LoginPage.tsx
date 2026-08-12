@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { apiFetch } from "@/api/client";
-import { Zap } from "lucide-react";
 
 interface AuthTokens {
   access_token: string;
@@ -66,10 +65,16 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
         <div className="rounded-2xl border bg-card p-8 shadow-xl shadow-primary/5">
           {/* Logo */}
           <div className="flex items-center justify-center gap-2.5 mb-6">
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-primary/10">
-              <Zap className="h-5 w-5 text-primary" />
+            <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-br from-blue-500 to-emerald-500 shadow-lg shadow-blue-500/20">
+              <svg viewBox="0 0 24 24" className="h-6 w-6 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none" />
+              </svg>
             </div>
-            <span className="text-xl font-bold tracking-tight">Investor</span>
+            <div>
+              <span className="text-xl font-bold tracking-tight">Financial Compass</span>
+              <p className="text-[10px] text-muted-foreground">Navigate your wealth</p>
+            </div>
           </div>
 
           {pendingApproval ? (
