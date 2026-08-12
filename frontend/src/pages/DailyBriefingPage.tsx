@@ -8,7 +8,7 @@ import { DetailedNewsPage } from "./DetailedNewsPage";
 type Tab = "briefing" | "predictions" | "insights" | "news";
 
 const TABS: { id: Tab; label: string; icon: any }[] = [
-  { id: "briefing", label: "Today's Briefing", icon: FileText },
+  { id: "briefing", label: "News", icon: FileText },
   { id: "predictions", label: "AI Predictions", icon: Brain },
   { id: "insights", label: "Insights", icon: Lightbulb },
   { id: "news", label: "News Feed", icon: Newspaper },

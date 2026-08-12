@@ -186,9 +186,9 @@ export function PredictionsPage() {
                   <span
                     key={t.ticker}
                     className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
-                      t.expected_direction === "up" ? "bg-green-100 text-green-700" :
-                      t.expected_direction === "down" ? "bg-red-100 text-red-700" :
-                      "bg-gray-100 text-gray-600"
+                      t.expected_direction === "up" ? "bg-emerald-500/10 text-emerald-500" :
+                      t.expected_direction === "down" ? "bg-red-500/10 text-red-500" :
+                      "bg-muted text-muted-foreground"
                     }`}
                   >
                     {t.expected_direction === "up" ? "↑" : t.expected_direction === "down" ? "↓" : "→"}
@@ -283,9 +283,9 @@ export function PredictionsPage() {
                   key={i}
                   className={`w-full aspect-square rounded-sm flex items-center justify-center text-[9px] font-bold cursor-default transition-all hover:scale-125 hover:z-10 hover:shadow-md ${
                     cell === null ? "bg-muted/30" :
-                    cell.mood === "bullish" ? (cell.scored ? "bg-green-500 text-white" : "bg-green-200 text-green-800") :
-                    cell.mood === "bearish" ? (cell.scored ? "bg-red-500 text-white" : "bg-red-200 text-red-800") :
-                    cell.scored ? "bg-gray-400 text-white" : "bg-gray-100 text-gray-500"
+                    cell.mood === "bullish" ? (cell.scored ? "bg-green-500 text-white" : "bg-emerald-500/20 text-emerald-500") :
+                    cell.mood === "bearish" ? (cell.scored ? "bg-red-500 text-white" : "bg-red-500/20 text-red-500") :
+                    cell.scored ? "bg-muted-foreground text-white" : "bg-muted text-muted-foreground"
                   }`}
                   title={cell ? `${cell.date}: ${cell.mood}${cell.score ? ` (${cell.score}%)` : " (pending)"}` : "No data"}
                 >
@@ -297,7 +297,7 @@ export function PredictionsPage() {
           <div className="flex items-center justify-center gap-4 mt-3 text-[10px] text-muted-foreground">
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-green-500 rounded-sm" /> Bullish</span>
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-red-500 rounded-sm" /> Bearish</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-gray-400 rounded-sm" /> Neutral</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-muted-foreground rounded-sm" /> Neutral</span>
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-green-200 rounded-sm" /> Pending</span>
           </div>
         </div>
@@ -323,7 +323,7 @@ export function PredictionsPage() {
                   key={i}
                   className="flex-1 flex flex-col items-center justify-end group relative"
                 >
-                  <div className="absolute -top-8 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                  <div className="absolute -top-8 bg-popover text-popover-foreground text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
                     {entry.prediction_date}: {score}%
                   </div>
                   <div
@@ -499,10 +499,10 @@ function HowItWorks() {
 
 function MoodBadge({ mood }: { mood: string }) {
   const config = {
-    bullish: { icon: <TrendingUp className="h-3 w-3" />, bg: "bg-green-100 text-green-700 border-green-200" },
-    bearish: { icon: <TrendingDown className="h-3 w-3" />, bg: "bg-red-100 text-red-700 border-red-200" },
-    neutral: { icon: <Minus className="h-3 w-3" />, bg: "bg-gray-100 text-gray-700 border-gray-200" },
-  }[mood] || { icon: <Minus className="h-3 w-3" />, bg: "bg-gray-100 text-gray-700 border-gray-200" };
+    bullish: { icon: <TrendingUp className="h-3 w-3" />, bg: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
+    bearish: { icon: <TrendingDown className="h-3 w-3" />, bg: "bg-red-500/10 text-red-500 border-red-500/20" },
+    neutral: { icon: <Minus className="h-3 w-3" />, bg: "bg-muted text-muted-foreground border-border" },
+  }[mood] || { icon: <Minus className="h-3 w-3" />, bg: "bg-muted text-muted-foreground border-border" };
 
   return (
     <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${config.bg}`}>

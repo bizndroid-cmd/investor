@@ -16,12 +16,12 @@ import {
 import { useState } from "react";
 
 const navItems = [
-  { to: "/", label: "Portfolio", icon: BarChart3 },
+  { to: "/goals", label: "Blueprint", icon: Target },
+  { to: "/", label: "The Market", icon: BarChart3 },
   { to: "/earnings", label: "Earnings", icon: Wallet },
   { to: "/etfs", label: "ETFs", icon: Coins },
-  { to: "/goals", label: "Goals", icon: Target },
   { to: "/research", label: "Research", icon: Crosshair },
-  { to: "/briefing", label: "Daily Briefing", icon: FileText },
+  { to: "/briefing", label: "AI Copilot", icon: FileText },
   { to: "/alerts", label: "Alerts", icon: Bell },
   { to: "/brokers", label: "Brokers", icon: Link2 },
   { to: "/settings", label: "Settings", icon: Settings2 },
