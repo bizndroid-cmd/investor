@@ -533,3 +533,55 @@ class Portfolio(Base):
     updated_at: Mapped[datetime] = mapped_column(
         sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now()
     )
+
+
+class Goal(Base):
+    """A financial target the user is working towards."""
+
+    __tablename__ = "goals"
+    __table_args__ = (sa.Index("idx_goals_user", "user_id"),)
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    target_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    target_currency: Mapped[str] = mapped_column(String(5), nullable=False)
+    deadline: Mapped[datetime | None] = mapped_column(sa.Date, nullable=True)
+    icon: Mapped[str] = mapped_column(String(20), default="target")
+    color: Mapped[str] = mapped_column(String(20), default="blue")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now()
+    )
+
+
+class WealthEntry(Base):
+    """A manual wealth deposit/asset entry linked to a goal."""
+
+    __tablename__ = "wealth_entries"
+    __table_args__ = (
+        sa.Index("idx_wealth_entries_user", "user_id"),
+        sa.Index("idx_wealth_entries_goal", "goal_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    goal_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("goals.id", ondelete="CASCADE"), nullable=True
+    )
+    category: Mapped[str] = mapped_column(String(30), nullable=False)
+    label: Mapped[str] = mapped_column(String(100), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(5), nullable=False)
+    entry_date: Mapped[datetime] = mapped_column(sa.Date, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
+    )

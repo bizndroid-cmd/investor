@@ -38,6 +38,7 @@ from backend.routers import predictions as predictions_router
 from backend.routers import research as research_router
 from backend.routers import earnings as earnings_router
 from backend.routers import etfs as etfs_router
+from backend.routers import goals as goals_router
 from backend.routers import preferences as preferences_router
 from backend.routers import portfolios as portfolios_router
 from backend.routers import telegram as telegram_router
@@ -225,6 +226,7 @@ app.include_router(predictions_router.router)
 app.include_router(research_router.router)
 app.include_router(earnings_router.router)
 app.include_router(etfs_router.router)
+app.include_router(goals_router.router)
 app.include_router(preferences_router.router)
 app.include_router(portfolios_router.router)
 app.include_router(telegram_router.router)

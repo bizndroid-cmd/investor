@@ -9,6 +9,7 @@ import { ComparisonPage } from "@/pages/ComparisonPage";
 import { BriefingPage } from "@/pages/BriefingPage";
 import { DetailedNewsPage } from "@/pages/DetailedNewsPage";
 import { ETFsPage } from "@/pages/ETFsPage";
+import { GoalsPage } from "@/pages/GoalsPage";
 import { EarningsPage } from "@/pages/EarningsPage";
 import { AttachmentsPage } from "@/pages/AttachmentsPage";
 import { PredictionsPage } from "@/pages/PredictionsPage";
@@ -41,6 +42,7 @@ function App() {
           <Route path="/" element={<PortfolioPage />} />
           <Route path="/earnings" element={<EarningsPage />} />
           <Route path="/etfs" element={<ETFsPage />} />
+          <Route path="/goals" element={<GoalsPage />} />
           <Route path="/insights" element={<InsightsPage />} />
           <Route path="/briefing" element={<BriefingPage />} />
           <Route path="/research" element={<ResearchPage />} />

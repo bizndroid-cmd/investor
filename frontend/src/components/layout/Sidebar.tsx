@@ -18,6 +18,7 @@ import {
   Paperclip,
   Settings2,
   Coins,
+  Target,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -25,6 +26,7 @@ const navItems = [
   { to: "/", label: "Portfolio", icon: BarChart3 },
   { to: "/earnings", label: "Earnings", icon: Wallet },
   { to: "/etfs", label: "ETFs", icon: Coins },
+  { to: "/goals", label: "Goals", icon: Target },
   { to: "/insights", label: "Smart Insights", icon: Lightbulb },
   { to: "/briefing", label: "Portfolio Briefing", icon: FileText },
   { to: "/research", label: "Stock Research", icon: Crosshair },
