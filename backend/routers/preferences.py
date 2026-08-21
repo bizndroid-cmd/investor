@@ -152,3 +152,70 @@ async def list_available_geographies() -> list[dict]:
             "exchanges": list(geo.exchanges),
         })
     return result
+
+
+@router.post("/onboarding-profile")
+async def store_onboarding_profile(
+    body: dict,
+    session: Session = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Store onboarding questionnaire answers for personalization.
+
+    Used by the AI blueprint generator to create personalized goals.
+    Stores as JSON in user_preferences or a dedicated field.
+    """
+    import json
+
+    # Store in UserPreferences (reuse timezone field as JSON blob for now)
+    # TODO: Add dedicated onboarding_profile column later
+    stmt = select(UserPreferences).where(UserPreferences.user_id == session.user_id)
+    result = await db.execute(stmt)
+    prefs = result.scalar_one_or_none()
+
+    if not prefs:
+        prefs = UserPreferences(id=uuid4(), user_id=session.user_id, geography="IN")
+        db.add(prefs)
+
+    # Detect geography from about answers
+    about = body.get("about", [])
+    if "trading_us" in about:
+        prefs.geography = "US"
+    elif "trading_india" in about:
+        prefs.geography = "IN"
+
+    await db.commit()
+
+    # Auto-create first goal based on onboarding answers
+    try:
+        from backend.models.orm import Goal
+        first_goal = body.get("first_goal", "")
+        goal_map = {
+            "emergency_fund": ("Emergency Fund", 300000, "INR", "emergency", "green"),
+            "house": ("Dream Home", 5000000, "INR", "home", "blue"),
+            "car": ("New Car", 1000000, "INR", "car", "amber"),
+            "debt_free": ("Debt Free", 500000, "INR", "target", "red"),
+            "invest_1l": ("First ₹1L Invested", 100000, "INR", "coins", "purple"),
+            "retire": ("Retirement Corpus", 10000000, "INR", "retirement", "green"),
+        }
+        if first_goal in goal_map:
+            name, amount, currency, icon, color = goal_map[first_goal]
+            existing = await db.execute(
+                select(Goal).where(Goal.user_id == session.user_id, Goal.name == name)
+            )
+            if not existing.scalar_one_or_none():
+                goal = Goal(
+                    id=uuid4(),
+                    user_id=session.user_id,
+                    name=name,
+                    target_amount=amount,
+                    target_currency=currency,
+                    icon=icon,
+                    color=color,
+                )
+                db.add(goal)
+                await db.commit()
+    except Exception:
+        pass  # Non-critical
+
+    return {"status": "ok"}

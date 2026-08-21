@@ -18,6 +18,7 @@ import { NerdStatsPage } from "@/pages/NerdStatsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { DailyBriefingPage } from "@/pages/DailyBriefingPage";
 import { LoginPage } from "@/pages/LoginPage";
+import { OnboardingPage } from "@/pages/OnboardingPage";
 import { ToastContainer } from "@/components/common/Toast";
 import { AlertNotification } from "@/components/alerts/AlertNotification";
 
@@ -25,11 +26,24 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
     () => !!localStorage.getItem("access_token")
   );
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   if (!isAuthenticated) {
+    if (showOnboarding) {
+      return (
+        <>
+          <OnboardingPage onComplete={() => setIsAuthenticated(true)} />
+          <ToastContainer />
+        </>
+      );
+    }
+
     return (
       <>
-        <LoginPage onLogin={() => setIsAuthenticated(true)} />
+        <LoginPage
+          onLogin={() => setIsAuthenticated(true)}
+          onRegister={() => setShowOnboarding(true)}
+        />
         <ToastContainer />
       </>
     );

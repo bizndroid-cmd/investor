@@ -6,7 +6,7 @@ interface AuthTokens {
   refresh_token: string;
 }
 
-export function LoginPage({ onLogin }: { onLogin: () => void }) {
+export function LoginPage({ onLogin, onRegister }: { onLogin: () => void; onRegister?: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -178,17 +178,13 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
               </form>
 
               <p className="mt-5 text-center text-xs text-muted-foreground">
-                {isRegister ? "Already have an account?" : "Don't have an account?"}{" "}
+                Don't have an account?{" "}
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsRegister(!isRegister);
-                    setError(null);
-                    setConfirmPassword("");
-                  }}
+                  onClick={() => onRegister ? onRegister() : setIsRegister(true)}
                   className="text-primary font-medium hover:underline transition-colors"
                 >
-                  {isRegister ? "Sign in" : "Register"}
+                  Get Started
                 </button>
               </p>
             </>
