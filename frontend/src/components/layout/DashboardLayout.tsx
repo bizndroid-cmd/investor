@@ -2,6 +2,7 @@ import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { ProductTour } from "@/components/common/ProductTour";
 
 export function DashboardLayout() {
   useAnalytics();
@@ -17,6 +18,7 @@ export function DashboardLayout() {
           </div>
         </main>
       </div>
+      <ProductTour />
     </div>
   );
 }
