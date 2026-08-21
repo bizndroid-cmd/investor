@@ -1,8 +1,11 @@
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
+import { useAnalytics } from "@/hooks/useAnalytics";
 
 export function DashboardLayout() {
+  useAnalytics();
+
   return (
     <div className="flex min-h-screen">
       <Sidebar />

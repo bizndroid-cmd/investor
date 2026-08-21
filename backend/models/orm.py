@@ -585,3 +585,27 @@ class WealthEntry(Base):
     created_at: Mapped[datetime] = mapped_column(
         sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
     )
+
+
+class AnalyticsEvent(Base):
+    """User interaction tracking — page views, clicks, session time."""
+
+    __tablename__ = "analytics_events"
+    __table_args__ = (
+        sa.Index("idx_analytics_user", "user_id"),
+        sa.Index("idx_analytics_type", "event_type"),
+        sa.Index("idx_analytics_created", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    page: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    target: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    extra_data: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
+    )
