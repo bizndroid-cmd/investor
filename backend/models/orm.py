@@ -609,3 +609,31 @@ class AnalyticsEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
     )
+
+
+class Remittance(Base):
+    """Cross-border money transfer record."""
+
+    __tablename__ = "remittances"
+    __table_args__ = (
+        sa.Index("idx_remittances_user", "user_id"),
+        sa.Index("idx_remittances_date", "transfer_date"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    direction: Mapped[str] = mapped_column(String(10), nullable=False)
+    source_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    source_currency: Mapped[str] = mapped_column(String(5), nullable=False)
+    target_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    target_currency: Mapped[str] = mapped_column(String(5), nullable=False)
+    exchange_rate: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    purpose: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    transfer_date: Mapped[datetime] = mapped_column(sa.Date, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
+    )

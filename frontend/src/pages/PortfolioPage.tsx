@@ -5,6 +5,7 @@ import { TopPerformers } from "@/components/portfolio/TopPerformers";
 import { FundamentalsPanel } from "@/components/portfolio/FundamentalsPanel";
 import { NetWorthCard } from "@/components/portfolio/NetWorthCard";
 import { WhatIfSimulator } from "@/components/market/WhatIfSimulator";
+import { RemittanceTracker } from "@/components/market/RemittanceTracker";
 import { usePortfolio, useRefreshPortfolio } from "@/hooks/usePortfolio";
 import { usePriceSocket } from "@/hooks/usePriceSocket";
 import { useGeo } from "@/contexts/GeoContext";
@@ -128,6 +129,9 @@ export function PortfolioPage() {
 
           {/* Cross-market comparison */}
           <WhatIfSimulator />
+
+          {/* Remittance tracker */}
+          <RemittanceTracker />
         </div>
 
         {/* RIGHT COLUMN — summary stat cards + performers stacked */}
