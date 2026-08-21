@@ -4,6 +4,7 @@ import { HoldingsTable } from "@/components/portfolio/HoldingsTable";
 import { TopPerformers } from "@/components/portfolio/TopPerformers";
 import { FundamentalsPanel } from "@/components/portfolio/FundamentalsPanel";
 import { NetWorthCard } from "@/components/portfolio/NetWorthCard";
+import { WhatIfSimulator } from "@/components/market/WhatIfSimulator";
 import { usePortfolio, useRefreshPortfolio } from "@/hooks/usePortfolio";
 import { usePriceSocket } from "@/hooks/usePriceSocket";
 import { useGeo } from "@/contexts/GeoContext";
@@ -124,6 +125,9 @@ export function PortfolioPage() {
 
           {/* Holdings table */}
           <HoldingsTable />
+
+          {/* Cross-market comparison */}
+          <WhatIfSimulator />
         </div>
 
         {/* RIGHT COLUMN — summary stat cards + performers stacked */}
