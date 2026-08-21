@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import redis.asyncio as aioredis
@@ -118,3 +119,46 @@ async def mfa_verify(
         user_id=session.user_id, totp_code=body.totp_code
     )
     return MFAVerifyResponse(verified=verified)
+
+
+# ---------------------------------------------------------------------------
+# Account management
+# ---------------------------------------------------------------------------
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class DeleteAccountRequest(BaseModel):
+    password: str  # Must confirm password to delete
+
+
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordRequest,
+    session: Session = Depends(get_current_user),
+    auth_service: AuthService = Depends(get_auth_service),
+) -> dict:
+    """Change the current user's password."""
+    await auth_service.change_password(
+        user_id=session.user_id,
+        current_password=body.current_password,
+        new_password=body.new_password,
+    )
+    return {"message": "Password changed successfully."}
+
+
+@router.post("/delete-account")
+async def delete_account(
+    body: DeleteAccountRequest,
+    session: Session = Depends(get_current_user),
+    auth_service: AuthService = Depends(get_auth_service),
+) -> dict:
+    """Permanently delete the user account and all associated data."""
+    await auth_service.delete_account(
+        user_id=session.user_id,
+        password=body.password,
+    )
+    return {"message": "Account deleted."}

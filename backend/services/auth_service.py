@@ -377,3 +377,35 @@ class AuthService(IAuthService):
             "iat": now,
         }
         return jwt.encode(payload, settings.secret_key, algorithm=JWT_ALGORITHM)
+
+
+    async def change_password(self, user_id: UUID, current_password: str, new_password: str) -> None:
+        """Change user's password after verifying current password."""
+        result = await self._db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found.")
+
+        if not pwd_context.verify(current_password, user.password_hash):
+            raise HTTPException(status_code=401, detail="Current password is incorrect.")
+
+        if len(new_password) < 8:
+            raise HTTPException(status_code=400, detail="New password must be at least 8 characters.")
+
+        user.password_hash = pwd_context.hash(new_password)
+        await self._db.commit()
+
+    async def delete_account(self, user_id: UUID, password: str) -> None:
+        """Permanently delete user and all associated data. Requires password confirmation."""
+        result = await self._db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found.")
+
+        if not pwd_context.verify(password, user.password_hash):
+            raise HTTPException(status_code=401, detail="Password is incorrect.")
+
+        # CASCADE deletes handle all related data (sessions, alerts, holdings, etc.)
+        await self._db.delete(user)
+        await self._db.commit()
+        logger.info("Account deleted for user %s", user_id)

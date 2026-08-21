@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/api/client";
 import { useActivePortfolio } from "@/contexts/PortfolioContext";
-import { Settings, Globe, Save, Plus, Trash2, Star, Loader2 } from "lucide-react";
+import { Settings, Globe, Save, Plus, Trash2, Star, Loader2, Key, AlertTriangle } from "lucide-react";
 import type { BrokerId } from "@/api/types";
 
 interface GeoOption {
@@ -110,6 +110,9 @@ export function SettingsPage() {
           </button>
         </div>
       </div>
+
+      {/* Account Management */}
+      <AccountSection />
     </div>
   );
 }
@@ -301,6 +304,119 @@ function PortfolioManagement({ geos }: { geos: GeoOption[] }) {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+
+function AccountSection() {
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [deletePw, setDeletePw] = useState("");
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSuccess, setPwSuccess] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const changePwMutation = useMutation({
+    mutationFn: () => apiFetch("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ current_password: currentPw, new_password: newPw }),
+    }),
+    onSuccess: () => {
+      setPwSuccess(true);
+      setCurrentPw(""); setNewPw(""); setConfirmPw("");
+      setTimeout(() => { setPwSuccess(false); setShowChangePassword(false); }, 2000);
+    },
+    onError: (e: any) => setPwError(e?.body?.detail || "Failed to change password"),
+  });
+
+  const deleteAccountMutation = useMutation({
+    mutationFn: () => apiFetch("/auth/delete-account", {
+      method: "POST",
+      body: JSON.stringify({ password: deletePw }),
+    }),
+    onSuccess: () => {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      window.location.reload();
+    },
+    onError: (e: any) => setDeleteError(e?.body?.detail || "Failed to delete account"),
+  });
+
+  const handleChangePw = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwError(null);
+    if (newPw.length < 8) { setPwError("Min 8 characters"); return; }
+    if (newPw !== confirmPw) { setPwError("Passwords don't match"); return; }
+    changePwMutation.mutate();
+  };
+
+  return (
+    <div className="space-y-4 max-w-lg">
+      {/* Change Password */}
+      <div className="bento-card">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold flex items-center gap-2">
+            <Key className="h-4 w-4 text-primary" />
+            Password
+          </h3>
+          <button onClick={() => setShowChangePassword(!showChangePassword)} className="text-xs text-primary font-medium hover:underline">
+            Change
+          </button>
+        </div>
+        {showChangePassword && (
+          <form onSubmit={handleChangePw} className="mt-4 space-y-3 animate-fade-in">
+            <input type="password" value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} placeholder="Current password" className="input-field text-xs" required />
+            <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="New password (min 8 chars)" className="input-field text-xs" required minLength={8} />
+            <input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} placeholder="Confirm new password" className="input-field text-xs" required minLength={8} />
+            {pwError && <p className="text-xs text-destructive">{pwError}</p>}
+            {pwSuccess && <p className="text-xs text-emerald-500">Password changed!</p>}
+            <button type="submit" disabled={changePwMutation.isPending} className="btn-primary text-xs">
+              {changePwMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : null}
+              Update Password
+            </button>
+          </form>
+        )}
+      </div>
+
+      {/* Delete Account */}
+      <div className="bento-card border-destructive/20">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold flex items-center gap-2 text-destructive">
+            <AlertTriangle className="h-4 w-4" />
+            Delete Account
+          </h3>
+          <button onClick={() => setShowDeleteAccount(!showDeleteAccount)} className="text-xs text-destructive font-medium hover:underline">
+            {showDeleteAccount ? "Cancel" : "Delete"}
+          </button>
+        </div>
+        {showDeleteAccount && (
+          <div className="mt-4 space-y-3 animate-fade-in">
+            <div className="rounded-lg bg-destructive/5 border border-destructive/20 p-3">
+              <p className="text-xs text-destructive font-medium">This will permanently delete:</p>
+              <ul className="text-[10px] text-muted-foreground mt-1.5 space-y-0.5 list-disc list-inside">
+                <li>All portfolio data and snapshots</li>
+                <li>ETF holdings and goals</li>
+                <li>Alerts, trade history, attachments</li>
+                <li>All account data — cannot be undone</li>
+              </ul>
+            </div>
+            <input type="password" value={deletePw} onChange={(e) => setDeletePw(e.target.value)} placeholder="Enter your password to confirm" className="input-field text-xs" required />
+            {deleteError && <p className="text-xs text-destructive">{deleteError}</p>}
+            <button
+              onClick={() => deleteAccountMutation.mutate()}
+              disabled={deleteAccountMutation.isPending || !deletePw}
+              className="inline-flex items-center justify-center rounded-xl bg-destructive px-4 py-2.5 text-xs font-semibold text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 transition-all"
+            >
+              {deleteAccountMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : <Trash2 className="h-3 w-3 mr-1.5" />}
+              Permanently Delete Account
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
