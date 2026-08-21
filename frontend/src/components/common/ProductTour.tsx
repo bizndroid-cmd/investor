@@ -10,8 +10,8 @@ interface TourStep {
 
 const TOUR_STEPS: TourStep[] = [
   {
-    title: "Welcome to Financial Compass",
-    description: "Your personal wealth tracking companion. Let us give you a quick tour of what you can do here.",
+    title: "Welcome to RuDo",
+    description: "Your cross-border financial dashboard. Track wealth in Rupees and Dollars from one place. Let us show you around.",
     position: "center",
   },
   {
@@ -56,7 +56,7 @@ const TOUR_STEPS: TourStep[] = [
   },
 ];
 
-const STORAGE_KEY = "fc_tour_completed";
+const STORAGE_KEY = "rudo_tour_completed";
 
 export function ProductTour() {
   const [step, setStep] = useState(0);

@@ -16,7 +16,7 @@
 
 set -e
 
-echo "=== Stock Investment Dashboard — Deployment ==="
+echo "=== RuDo by BizNDroid — Deployment ==="
 echo ""
 
 # Pull latest code

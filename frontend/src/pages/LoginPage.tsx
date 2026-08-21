@@ -72,8 +72,8 @@ export function LoginPage({ onLogin, onRegister }: { onLogin: () => void; onRegi
               </svg>
             </div>
             <div>
-              <span className="text-xl font-bold tracking-tight">Financial Compass</span>
-              <p className="text-[10px] text-muted-foreground">Navigate your wealth</p>
+              <span className="text-xl font-bold tracking-tight">RuDo</span>
+              <p className="text-[10px] text-muted-foreground">by BizNDroid</p>
             </div>
           </div>
 

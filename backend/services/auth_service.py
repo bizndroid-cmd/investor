@@ -249,7 +249,7 @@ class AuthService(IAuthService):
         secret = pyotp.random_base32()
         totp = pyotp.TOTP(secret)
         provisioning_uri = totp.provisioning_uri(
-            name=user.email, issuer_name="StockDashboard"
+            name=user.email, issuer_name="RuDo"
         )
 
         # Generate QR code as base64 encoding of the provisioning URI

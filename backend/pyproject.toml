@@ -6,9 +6,9 @@ build-backend = "hatchling.build"
 version = "0.1.0"
 
 [project]
-name = "stock-investment-dashboard-backend"
+name = "rudo-backend"
 version = "0.1.0"
-description = "Stock Investment Dashboard Backend API"
+description = "RuDo — Cross-border financial dashboard API"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi==0.115.0",

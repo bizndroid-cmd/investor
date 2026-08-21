@@ -63,7 +63,7 @@ export function Sidebar() {
               <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none" />
             </svg>
           </div>
-          <span className="text-sm font-bold tracking-tight">Financial Compass</span>
+          <span className="text-sm font-bold tracking-tight">RuDo</span>
         </div>
 
         {/* Navigation */}

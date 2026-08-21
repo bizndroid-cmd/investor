@@ -224,7 +224,7 @@ function FrameMotivation({ value, onChange }: { value: string; onChange: (v: str
     <div>
       <div className="flex items-center gap-2 mb-2">
         <Compass className="h-5 w-5 text-primary" />
-        <span className="text-[10px] text-primary font-medium uppercase tracking-wider">Financial Compass</span>
+        <span className="text-[10px] text-primary font-medium uppercase tracking-wider">RuDo</span>
       </div>
       <h2 className="text-xl font-bold mt-3">What brings you here?</h2>
       <p className="text-sm text-muted-foreground mt-1.5">Choose what resonates most with you.</p>
@@ -357,7 +357,7 @@ function FrameEmail({ value, onChange }: { value: string; onChange: (v: string) 
     <div>
       <h2 className="text-xl font-bold">What's your email?</h2>
       <p className="text-sm text-muted-foreground mt-1.5">
-        This will be your login to access Financial Compass.
+        This will be your login to access RuDo.
       </p>
 
       <div className="mt-6">

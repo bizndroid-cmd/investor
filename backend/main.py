@@ -180,8 +180,8 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="Stock Investment Dashboard API",
-    description="Aggregated multi-broker stock portfolio management with real-time updates",
+    title="RuDo API",
+    description="Cross-border financial dashboard — Rupee + Dollar wealth tracking",
     version="1.0.0",
     lifespan=lifespan,
 )

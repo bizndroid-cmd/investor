@@ -1,4 +1,4 @@
-# Financial Compass — Technical Architecture
+# RuDo — Technical Architecture
 
 ## Architecture Overview
 
