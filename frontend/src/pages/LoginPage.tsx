@@ -64,16 +64,15 @@ export function LoginPage({ onLogin, onRegister }: { onLogin: () => void; onRegi
       <div className="w-full max-w-sm animate-scale-in">
         <div className="rounded-3xl border bg-card/95 backdrop-blur-sm p-8 shadow-2xl shadow-primary/10">
           {/* Logo */}
-          <div className="flex items-center justify-center gap-2.5 mb-6">
-            <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-br from-blue-500 to-emerald-500 shadow-lg shadow-blue-500/20">
-              <svg viewBox="0 0 24 24" className="h-6 w-6 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none" />
-              </svg>
+          <div className="flex items-center justify-center gap-3 mb-6">
+            <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-gradient-to-br from-blue-500 to-emerald-500 shadow-xl shadow-blue-500/25">
+              <span className="text-white font-black text-lg">₹$</span>
             </div>
             <div>
-              <span className="text-xl font-bold tracking-tight">RuDo</span>
-              <p className="text-[10px] text-muted-foreground">by BizNDroid</p>
+              <span className="text-2xl font-extrabold tracking-tight">
+                <span className="bg-gradient-to-r from-blue-500 to-blue-600 bg-clip-text text-transparent">Ru</span><span className="bg-gradient-to-r from-emerald-500 to-emerald-600 bg-clip-text text-transparent">Do</span>
+              </span>
+              <p className="text-[10px] text-muted-foreground mt-0.5">by <span className="font-medium">BizNDroid</span></p>
             </div>
           </div>
 
