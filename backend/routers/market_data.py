@@ -63,3 +63,12 @@ async def get_history(
 ) -> list[HistoricalDataPoint]:
     """Return OHLCV historical data for the given ticker and time range."""
     return await market_data_service.get_historical_data(ticker.upper(), range)
+
+
+@router.get("/forex/usdinr")
+async def get_forex_rate(
+    session: Session = Depends(get_current_user),
+) -> dict:
+    """Live USD/INR exchange rate with daily change."""
+    from backend.services.forex_service import get_usdinr_rate
+    return await get_usdinr_rate()

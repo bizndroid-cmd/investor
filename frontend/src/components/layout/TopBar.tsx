@@ -2,6 +2,7 @@ import { RefreshCw, Sun, Moon, ChevronDown, LogOut } from "lucide-react";
 import { useRefreshPortfolio } from "@/hooks/usePortfolio";
 import { useSocketStore } from "@/stores/socketStore";
 import { useActivePortfolio } from "@/contexts/PortfolioContext";
+import { ForexBadge } from "@/components/common/ForexWidget";
 import { useState, useEffect } from "react";
 
 export function TopBar() {
@@ -22,6 +23,7 @@ export function TopBar() {
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-card/90 backdrop-blur-xl px-4 md:px-6">
       <div className="flex items-center gap-3">
+        <ForexBadge />
         <PortfolioSwitcher />
       </div>
 
