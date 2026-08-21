@@ -60,9 +60,9 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
       <div className="w-full max-w-sm animate-scale-in">
-        <div className="rounded-2xl border bg-card p-8 shadow-xl shadow-primary/5">
+        <div className="rounded-3xl border bg-card/95 backdrop-blur-sm p-8 shadow-2xl shadow-primary/10">
           {/* Logo */}
           <div className="flex items-center justify-center gap-2.5 mb-6">
             <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-br from-blue-500 to-emerald-500 shadow-lg shadow-blue-500/20">
