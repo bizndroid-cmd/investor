@@ -292,3 +292,118 @@ async def _estimate_historical_dividends(holdings, real_purchase_dates: dict[str
                     purchase_dates_out[ticker] = pdate
 
     return results, purchase_dates_out
+
+
+@router.get("/tax-preview")
+async def get_dividend_tax_preview(
+    session: Session = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    portfolio_id=Depends(get_portfolio_id_dep),
+) -> dict:
+    """Tax-aware dividend preview — shows gross vs net after applicable taxes.
+
+    India:
+    - Dividends taxed at income slab rate (assumed 30% for high-income bracket)
+    - TDS at 10% if dividend > ₹5,000/year from single company
+
+    US (for Indian tax residents holding US stocks):
+    - 25% TDS at source by US (DTAA rate)
+    - India gives credit for foreign tax paid (Section 91)
+    - Effectively: 25% tax on US dividends (no double taxation)
+    """
+    from backend.models.orm import PortfolioSnapshot, StockFundamentals, ETFHolding
+
+    # Get holdings
+    snapshot_filter = PortfolioSnapshot.user_id == session.user_id
+    if portfolio_id:
+        snapshot_filter = (PortfolioSnapshot.user_id == session.user_id) & (
+            or_(PortfolioSnapshot.portfolio_id == portfolio_id, PortfolioSnapshot.portfolio_id.is_(None))
+        )
+
+    stmt = select(PortfolioSnapshot).where(snapshot_filter).order_by(desc(PortfolioSnapshot.snapshot_date))
+    result = await db.execute(stmt)
+    all_snaps = result.scalars().all()
+
+    if not all_snaps:
+        return {"has_data": False}
+
+    latest_date = all_snaps[0].snapshot_date
+    holdings = [s for s in all_snaps if s.snapshot_date == latest_date]
+
+    # Get fundamentals for dividend yields
+    tickers = [h.ticker for h in holdings]
+    fund_stmt = select(StockFundamentals).where(StockFundamentals.ticker.in_(tickers))
+    fund_result = await db.execute(fund_stmt)
+    fundamentals = {f.ticker: f for f in fund_result.scalars().all()}
+
+    # Compute per-stock tax preview
+    india_stocks = []
+    us_stocks = []
+
+    for h in holdings:
+        fund = fundamentals.get(h.ticker)
+        div_yield = float(fund.dividend_yield or 0) if fund else 0
+        current_value = float(h.current_value or 0)
+        annual_dividend = current_value * div_yield / 100
+
+        if annual_dividend <= 0:
+            continue
+
+        # Determine market by currency
+        is_us = h.currency == "USD"
+
+        if is_us:
+            us_tds = annual_dividend * 0.25  # 25% DTAA rate
+            net_dividend = annual_dividend - us_tds
+            us_stocks.append({
+                "ticker": h.ticker,
+                "annual_dividend_usd": round(annual_dividend, 2),
+                "us_tds_25pct": round(us_tds, 2),
+                "net_after_tax_usd": round(net_dividend, 2),
+                "effective_tax_pct": 25.0,
+                "note": "DTAA: 25% TDS by US. Credit available in India (Section 91).",
+            })
+        else:
+            # Indian dividend tax
+            india_tds = annual_dividend * 0.10 if annual_dividend > 5000 else 0
+            slab_tax = annual_dividend * 0.30  # Assumed 30% slab
+            net_dividend = annual_dividend - slab_tax
+            india_stocks.append({
+                "ticker": h.ticker,
+                "annual_dividend_inr": round(annual_dividend, 2),
+                "tds_10pct": round(india_tds, 2),
+                "slab_tax_30pct": round(slab_tax, 2),
+                "net_after_tax_inr": round(net_dividend, 2),
+                "effective_tax_pct": 30.0,
+                "note": "Taxed at income slab rate. TDS 10% if >₹5,000/company.",
+            })
+
+    # Totals
+    total_india_gross = sum(s["annual_dividend_inr"] for s in india_stocks)
+    total_india_net = sum(s["net_after_tax_inr"] for s in india_stocks)
+    total_us_gross = sum(s["annual_dividend_usd"] for s in us_stocks)
+    total_us_net = sum(s["net_after_tax_usd"] for s in us_stocks)
+
+    return {
+        "has_data": True,
+        "india": {
+            "stocks": india_stocks,
+            "total_gross": round(total_india_gross, 2),
+            "total_net": round(total_india_net, 2),
+            "total_tax": round(total_india_gross - total_india_net, 2),
+            "tax_regime": "New regime assumed (30% slab)",
+        },
+        "us": {
+            "stocks": us_stocks,
+            "total_gross_usd": round(total_us_gross, 2),
+            "total_net_usd": round(total_us_net, 2),
+            "total_tax_usd": round(total_us_gross - total_us_net, 2),
+            "tax_note": "25% DTAA withholding. Credit under Section 91 in India.",
+        },
+        "summary": {
+            "total_dividends_inr": round(total_india_gross, 2),
+            "total_dividends_usd": round(total_us_gross, 2),
+            "tax_saved_dtaa": round(total_us_gross * 0.05, 2),  # Saved vs 30% (only pay 25%)
+            "disclaimer": "Estimates only. Consult a CA for actual tax filing.",
+        },
+    }
