@@ -439,7 +439,7 @@ function CreateGoalForm({ onClose }: { onClose: () => void }) {
             </select>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="text-[10px] text-muted-foreground uppercase mb-1 block">Target Date</label>
             <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="input-field w-full" />
