@@ -207,9 +207,14 @@ async def confirm_import(
             if date_str:
                 try:
                     from dateutil import parser as dateparser
-                    executed_at = dateparser.parse(str(date_str))
+                    executed_at = dateparser.parse(str(date_str), dayfirst=True)
                 except Exception:
-                    pass
+                    # Try manual parse for "17-11-2020 09:48 AM" format
+                    try:
+                        from datetime import datetime as dt
+                        executed_at = dt.strptime(str(date_str).strip(), "%d-%m-%Y %I:%M %p")
+                    except Exception:
+                        pass
 
             order_id = str(row.get("order_id") or row.get("exchange_order_id") or "")
 

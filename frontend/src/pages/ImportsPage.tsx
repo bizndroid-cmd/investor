@@ -173,6 +173,12 @@ export function ImportsPage() {
         <p className="text-sm text-muted-foreground mt-1">
           Upload broker statements (CSV, XLSX, PDF) — AI extracts your portfolio data automatically
         </p>
+        <div className="mt-3 p-3 rounded-xl bg-blue-500/5 border border-blue-500/10 text-xs text-muted-foreground space-y-1">
+          <p><strong className="text-foreground">Two files recommended:</strong></p>
+          <p>1. <strong>Holdings Statement</strong> — current stocks, quantity, prices (populates Portfolio page)</p>
+          <p>2. <strong>Order History</strong> — buy/sell dates and prices (populates Earnings + dividend calculations)</p>
+          <p className="text-[10px] mt-1">Upload them one at a time. The system auto-detects which type each file is.</p>
+        </div>
       </div>
 
       {/* Upload Section */}

@@ -162,13 +162,20 @@ async def _parse_spreadsheet(
 
         # Convert to list of dicts
         rows = df.to_dict(orient="records")
-        # Clean NaN values
+        # Clean values for JSON serialization
+        import numpy as np
         for row in rows:
-            for k, v in row.items():
-                if pd.isna(v) if isinstance(v, float) else False:
+            for k, v in list(row.items()):
+                if v is None:
+                    pass
+                elif isinstance(v, float) and (np.isnan(v) or np.isinf(v)):
                     row[k] = None
                 elif isinstance(v, float) and v == int(v):
                     row[k] = int(v)
+                elif hasattr(v, "isoformat"):  # pandas Timestamp / datetime
+                    row[k] = v.isoformat() if v is not pd.NaT else None
+                elif isinstance(v, pd.Timestamp):
+                    row[k] = str(v) if pd.notna(v) else None
 
         columns = list(df.columns)
         parse_log.append(f"✓ Extracted {len(rows)} records successfully")
