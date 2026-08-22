@@ -92,38 +92,56 @@ async def confirm_import(
     today = date.today()
 
     if doc_type == "holdings":
-        # Import as portfolio snapshot
+        # Import as portfolio snapshot — UPSERT by ticker (no duplicates)
         for row in rows:
             ticker = row.get("ticker") or row.get("symbol", "")
             if not ticker:
                 continue
+            ticker = ticker.upper().strip().replace(" ", "")
 
-            quantity = Decimal(str(row.get("quantity", 0)))
-            avg_price = Decimal(str(row.get("avg_buy_price") or row.get("buy_price") or row.get("average buy price") or 0))
-            current_price = Decimal(str(row.get("current_price") or row.get("closing price") or row.get("closing_price") or avg_price))
-            current_value = Decimal(str(row.get("current_value") or row.get("closing value") or row.get("closing_value") or 0))
+            quantity = Decimal(str(row.get("quantity", 0) or 0))
+            avg_price = Decimal(str(row.get("avg_buy_price") or row.get("buy_price") or row.get("average_buy_price") or 0))
+            current_price = Decimal(str(row.get("current_price") or row.get("closing_price") or avg_price))
+            current_value = Decimal(str(row.get("current_value") or row.get("closing_value") or 0))
             if current_value == 0 and current_price > 0:
                 current_value = current_price * quantity
             invested = avg_price * quantity
             gain_loss = current_value - invested
             gain_loss_pct = (gain_loss / invested * 100) if invested > 0 else Decimal("0")
 
-            snapshot = PortfolioSnapshot(
-                id=uuid4(),
-                user_id=session.user_id,
-                portfolio_id=portfolio_id,
-                snapshot_date=today,
-                ticker=ticker.upper().replace(" ", ""),
-                broker_id=broker,
-                quantity=quantity,
-                avg_buy_price=avg_price,
-                current_price=current_price,
-                current_value=current_value,
-                gain_loss=gain_loss,
-                gain_loss_percent=gain_loss_pct,
-                currency=currency,
+            # Check if ticker already exists for today — update instead of insert
+            existing_stmt = select(PortfolioSnapshot).where(
+                PortfolioSnapshot.user_id == session.user_id,
+                PortfolioSnapshot.ticker == ticker,
+                PortfolioSnapshot.snapshot_date == today,
             )
-            db.add(snapshot)
+            existing = (await db.execute(existing_stmt)).scalar_one_or_none()
+
+            if existing:
+                existing.quantity = quantity
+                existing.avg_buy_price = avg_price
+                existing.current_price = current_price
+                existing.current_value = current_value
+                existing.gain_loss = gain_loss
+                existing.gain_loss_percent = gain_loss_pct
+                existing.portfolio_id = portfolio_id
+            else:
+                snapshot = PortfolioSnapshot(
+                    id=uuid4(),
+                    user_id=session.user_id,
+                    portfolio_id=portfolio_id,
+                    snapshot_date=today,
+                    ticker=ticker,
+                    broker_id=broker,
+                    quantity=quantity,
+                    avg_buy_price=avg_price,
+                    current_price=current_price,
+                    current_value=current_value,
+                    gain_loss=gain_loss,
+                    gain_loss_percent=gain_loss_pct,
+                    currency=currency,
+                )
+                db.add(snapshot)
             imported += 1
 
         # Create daily summary
@@ -151,21 +169,26 @@ async def confirm_import(
         db.add(summary)
 
     elif doc_type == "orders":
-        # Import as trade history
+        # Import as trade history — skip duplicates by order_id or ticker+date+qty
         for row in rows:
             ticker = row.get("ticker") or row.get("symbol", "")
             if not ticker:
                 continue
+            ticker = ticker.upper().strip().replace(" ", "")
 
             trade_type = (row.get("trade_type") or row.get("type") or "BUY").upper()
-            quantity = Decimal(str(row.get("quantity", 0)))
-            price = Decimal(str(row.get("price") or row.get("value", 0)))
-            if quantity > 0 and price > 0 and price > quantity:
-                # price might be total value, compute per-unit
+            if trade_type not in ("BUY", "SELL"):
+                trade_type = "BUY"
+
+            quantity = Decimal(str(row.get("quantity", 0) or 0))
+            price_raw = row.get("price") or row.get("value") or 0
+            price = Decimal(str(price_raw))
+            if quantity > 0 and price > quantity * 10:
+                # price is likely total value, compute per-unit
                 price = price / quantity
 
             executed_at = None
-            date_str = row.get("executed_at") or row.get("execution date and time") or row.get("date")
+            date_str = row.get("executed_at") or row.get("execution_date_and_time") or row.get("date")
             if date_str:
                 try:
                     from dateutil import parser as dateparser
@@ -173,18 +196,29 @@ async def confirm_import(
                 except Exception:
                     pass
 
+            order_id = str(row.get("order_id") or row.get("exchange_order_id") or "")
+
+            # Skip if exact order_id already exists
+            if order_id:
+                dup_stmt = select(TradeHistory).where(
+                    TradeHistory.user_id == session.user_id,
+                    TradeHistory.order_id == order_id,
+                )
+                if (await db.execute(dup_stmt)).scalar_one_or_none():
+                    continue
+
             trade = TradeHistory(
                 id=uuid4(),
                 user_id=session.user_id,
                 portfolio_id=portfolio_id,
-                ticker=ticker.upper().replace(" ", ""),
+                ticker=ticker,
                 isin=row.get("isin"),
                 trade_type=trade_type,
                 quantity=quantity,
                 price=price,
-                value=Decimal(str(row.get("value", 0))) if row.get("value") else None,
+                value=Decimal(str(row.get("value", 0) or 0)) if row.get("value") else None,
                 exchange=row.get("exchange"),
-                order_id=row.get("order_id") or row.get("exchange order id"),
+                order_id=order_id or None,
                 executed_at=executed_at,
                 broker=broker,
             )

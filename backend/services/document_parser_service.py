@@ -22,77 +22,180 @@ async def parse_document(
     filename: str,
     broker: str,
     currency: str,
-    doc_type: str = "holdings",  # holdings or orders
+    doc_type: str = "auto",
 ) -> dict[str, Any]:
-    """Parse uploaded document using LLM to extract structured data.
-
-    Returns:
-    {
-        "status": "success" | "partial" | "error",
-        "columns": ["ticker", "quantity", "price", ...],
-        "rows": [{...}, ...],
-        "metadata": {"broker": ..., "account_name": ..., "date": ...},
-        "raw_preview": "first 20 rows as text",
-        "parse_log": ["Reading file...", "Detected 26 rows...", ...]
-    }
-    """
+    """Parse uploaded document — uses pandas for XLSX/CSV (reliable), LLM for PDF."""
     parse_log = []
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
 
-    # Step 1: Read file content
-    parse_log.append(f"Reading {filename}...")
+    parse_log.append(f"Reading {filename} ({ext})...")
+
+    # For XLSX/CSV: use pandas directly (fast, reliable, no LLM needed)
+    if ext in ("xlsx", "xls", "csv"):
+        return await _parse_spreadsheet(file_content, filename, ext, broker, currency, doc_type, parse_log)
+
+    # For PDF: extract text then use LLM or fallback
     text_content = await _extract_text(file_content, filename)
-
     if not text_content:
         return {"status": "error", "message": "Could not read file content", "parse_log": parse_log}
 
     parse_log.append(f"Extracted {len(text_content)} characters")
-    parse_log.append(f"Broker: {broker} | Currency: {currency}")
+    return await _parse_with_fallback(text_content, broker, currency, doc_type, parse_log)
 
-    # Step 2: Truncate for LLM context
-    # Keep first ~3000 chars (enough for headers + sample rows)
-    truncated = text_content[:4000]
-    parse_log.append(f"Preparing data for AI analysis...")
 
-    # Step 3: Send to LLM for structured extraction
-    parse_log.append("AI analyzing document structure...")
+async def _parse_spreadsheet(
+    content: bytes, filename: str, ext: str, broker: str, currency: str, doc_type: str, parse_log: list
+) -> dict[str, Any]:
+    """Parse XLSX/CSV using pandas — no LLM dependency."""
+    try:
+        import pandas as pd
 
-    prompt = f"""You are a financial document parser. Extract structured data from this broker document.
+        if ext == "csv":
+            df = pd.read_csv(io.BytesIO(content))
+        else:
+            # Read all rows, find the actual header row
+            df_raw = pd.read_excel(io.BytesIO(content), header=None)
+            parse_log.append(f"Raw sheet: {df_raw.shape[0]} rows × {df_raw.shape[1]} columns")
 
-BROKER: {broker}
-CURRENCY: {currency}
-DOCUMENT TYPE: {doc_type}
-FILENAME: {filename}
+            # Find header row: row with most non-null string values matching known keywords
+            keywords = {"stock", "name", "isin", "quantity", "price", "value", "symbol",
+                        "type", "exchange", "order", "date", "closing", "buy", "average"}
+            header_idx = 0
+            max_score = 0
 
-DOCUMENT CONTENT:
-```
-{truncated}
-```
+            for i in range(min(15, len(df_raw))):
+                row_vals = [str(v).lower() for v in df_raw.iloc[i] if pd.notna(v)]
+                score = sum(1 for v in row_vals for kw in keywords if kw in v)
+                if score > max_score:
+                    max_score = score
+                    header_idx = i
 
-INSTRUCTIONS:
-1. Identify the data table in the document (holdings, orders, or transactions).
-2. Extract ALL rows of data.
-3. Map columns to standardized names. Use these standard column names:
-   - For holdings: ticker, stock_name, isin, quantity, avg_buy_price, buy_value, current_price, current_value, unrealized_pnl
-   - For orders: ticker, stock_name, isin, trade_type (BUY/SELL), quantity, price, value, exchange, order_id, executed_at, status
-4. Include metadata: account holder name, account number, statement date if visible.
+            parse_log.append(f"Header detected at row {header_idx}")
 
-RESPOND WITH VALID JSON ONLY (no markdown, no explanation):
-{{
-  "doc_type": "holdings" or "orders",
-  "metadata": {{
-    "account_name": "...",
-    "account_number": "...",
-    "statement_date": "YYYY-MM-DD or null",
-    "total_invested": number or null,
-    "total_value": number or null
-  }},
-  "columns": ["ticker", "stock_name", "quantity", ...],
-  "rows": [
-    {{"ticker": "RELIANCE", "stock_name": "Reliance Industries", "quantity": 2, ...}},
-    ...
-  ]
-}}
-"""
+            # Re-read with correct header
+            df = pd.read_excel(io.BytesIO(content), header=header_idx)
+
+        # Clean column names
+        df.columns = [str(c).strip() for c in df.columns]
+        # Drop completely empty rows
+        df = df.dropna(how="all")
+        # Drop rows where first meaningful column is NaN
+        if len(df.columns) > 0:
+            df = df.dropna(subset=[df.columns[0]])
+
+        parse_log.append(f"Columns: {', '.join(df.columns[:8])}")
+        parse_log.append(f"Data rows: {len(df)}")
+
+        if len(df) == 0:
+            return {"status": "error", "message": "No data rows found after header", "parse_log": parse_log}
+
+        # Auto-detect doc_type
+        col_lower = " ".join(df.columns).lower()
+        if doc_type == "auto":
+            if "execution" in col_lower or "order status" in col_lower or ("type" in col_lower and "buy" in df.to_string().lower()[:500]):
+                doc_type = "orders"
+            else:
+                doc_type = "holdings"
+
+        parse_log.append(f"Document type: {doc_type}")
+
+        # Standardize column names
+        col_map = {}
+        for col in df.columns:
+            cl = col.lower().strip()
+            if cl in ("stock name", "stock_name", "security name"):
+                col_map[col] = "stock_name"
+            elif cl == "isin":
+                col_map[col] = "isin"
+            elif cl in ("quantity", "qty"):
+                col_map[col] = "quantity"
+            elif "average" in cl and "price" in cl:
+                col_map[col] = "avg_buy_price"
+            elif cl in ("buy value", "invested value"):
+                col_map[col] = "buy_value"
+            elif cl in ("closing price", "current price", "ltp"):
+                col_map[col] = "current_price"
+            elif cl in ("closing value", "current value", "market value"):
+                col_map[col] = "current_value"
+            elif "unrealised" in cl or "p&l" in cl or "pnl" in cl or "profit" in cl:
+                col_map[col] = "unrealized_pnl"
+            elif cl in ("symbol", "ticker"):
+                col_map[col] = "ticker"
+            elif cl == "type":
+                col_map[col] = "trade_type"
+            elif cl == "value":
+                col_map[col] = "value"
+            elif cl == "exchange":
+                col_map[col] = "exchange"
+            elif "execution" in cl or "date and time" in cl:
+                col_map[col] = "executed_at"
+            elif "order status" in cl or cl == "status":
+                col_map[col] = "status"
+            elif cl in ("exchange order id", "order id"):
+                col_map[col] = "order_id"
+            else:
+                col_map[col] = cl.replace(" ", "_")
+
+        df = df.rename(columns=col_map)
+
+        # Add ticker from stock_name if missing
+        if "ticker" not in df.columns and "stock_name" in df.columns:
+            # For holdings without symbol, use first word of name
+            df["ticker"] = df["stock_name"].apply(lambda x: str(x).split(" ")[0].upper() if pd.notna(x) else "")
+
+        # Extract metadata
+        metadata = {"broker": broker}
+        if ext in ("xlsx", "xls"):
+            # Try to read name/account from early rows
+            df_meta = pd.read_excel(io.BytesIO(content), header=None, nrows=5)
+            for i in range(min(5, len(df_meta))):
+                row = [str(v) for v in df_meta.iloc[i] if pd.notna(v)]
+                row_text = " ".join(row).lower()
+                if "name" in row_text and len(row) >= 2:
+                    metadata["account_name"] = row[-1] if row[-1].lower() != "name" else row[1] if len(row) > 1 else ""
+                if "invested" in row_text:
+                    for v in row:
+                        try:
+                            metadata["total_invested"] = float(v)
+                        except (ValueError, TypeError):
+                            pass
+
+        # Convert to list of dicts
+        rows = df.to_dict(orient="records")
+        # Clean NaN values
+        for row in rows:
+            for k, v in row.items():
+                if pd.isna(v) if isinstance(v, float) else False:
+                    row[k] = None
+                elif isinstance(v, float) and v == int(v):
+                    row[k] = int(v)
+
+        columns = list(df.columns)
+        parse_log.append(f"✓ Extracted {len(rows)} records successfully")
+
+        return {
+            "status": "success",
+            "doc_type": doc_type,
+            "columns": columns,
+            "rows": rows,
+            "metadata": metadata,
+            "parse_log": parse_log,
+            "broker": broker,
+            "currency": currency,
+        }
+
+    except Exception as e:
+        parse_log.append(f"Spreadsheet parse error: {str(e)[:200]}")
+        # Fall back to text extraction
+        text = await _extract_text(content, filename)
+        if text:
+            return await _fallback_parse(text, broker, currency, filename, parse_log)
+        return {"status": "error", "message": str(e)[:200], "parse_log": parse_log}
+
+
+async def _parse_with_fallback(text: str, broker: str, currency: str, doc_type: str, parse_log: list) -> dict:
+    """For non-spreadsheet files: try LLM, fall back to rule-based."""
+    parse_log.append("Attempting AI parsing...")
 
     try:
         from backend.dependencies import create_llm_service
@@ -102,58 +205,49 @@ RESPOND WITH VALID JSON ONLY (no markdown, no explanation):
         llm = llm_service._get_llm()
 
         if llm is None:
-            parse_log.append("LLM not configured — falling back to rule-based parsing")
-            return await _fallback_parse(text_content, broker, currency, filename, parse_log)
+            raise ValueError("LLM not configured")
 
-        parse_log.append("Sending to AI model...")
+        truncated = text[:4000]
+        prompt = f"""Extract structured financial data from this document. Broker: {broker}, Currency: {currency}.
+
+DOCUMENT:
+```
+{truncated}
+```
+
+Return ONLY valid JSON:
+{{"doc_type": "holdings" or "orders", "columns": [...], "rows": [{{...}}, ...], "metadata": {{}}}}"""
+
         response = await llm.ainvoke([
-            SystemMessage(content="You are a precise financial document parser. Output only valid JSON."),
+            SystemMessage(content="You are a financial document parser. Return only valid JSON."),
             HumanMessage(content=prompt),
         ])
 
-        parse_log.append("AI response received")
-        parse_log.append("Parsing structured data...")
-
-        # Parse LLM response
         response_text = response.content.strip()
-        # Strip markdown code blocks if present
         if response_text.startswith("```"):
-            response_text = response_text.split("\n", 1)[1] if "\n" in response_text else response_text[3:]
+            response_text = "\n".join(response_text.split("\n")[1:])
             if response_text.endswith("```"):
                 response_text = response_text[:-3]
 
         result = json.loads(response_text)
-
         rows = result.get("rows", [])
-        columns = result.get("columns", [])
-        metadata = result.get("metadata", {})
-
-        parse_log.append(f"Extracted {len(rows)} records")
-        parse_log.append(f"Columns: {', '.join(columns)}")
-
-        if metadata.get("account_name"):
-            parse_log.append(f"Account: {metadata['account_name']}")
-
+        parse_log.append(f"AI extracted {len(rows)} records")
         parse_log.append("✓ Parsing complete")
 
         return {
             "status": "success",
             "doc_type": result.get("doc_type", doc_type),
-            "columns": columns,
+            "columns": result.get("columns", []),
             "rows": rows,
-            "metadata": metadata,
+            "metadata": result.get("metadata", {}),
             "parse_log": parse_log,
             "broker": broker,
             "currency": currency,
         }
-
-    except json.JSONDecodeError as e:
-        parse_log.append(f"AI response parsing failed: {str(e)[:100]}")
-        parse_log.append("Falling back to rule-based parsing...")
-        return await _fallback_parse(text_content, broker, currency, filename, parse_log)
     except Exception as e:
-        parse_log.append(f"Error: {str(e)[:150]}")
-        return {"status": "error", "message": str(e)[:200], "parse_log": parse_log}
+        parse_log.append(f"AI parsing failed: {str(e)[:100]}")
+        parse_log.append("Using rule-based fallback...")
+        return await _fallback_parse(text, broker, currency, "", parse_log)
 
 
 async def _extract_text(content: bytes, filename: str) -> str | None:
@@ -166,12 +260,13 @@ async def _extract_text(content: bytes, filename: str) -> str | None:
     elif ext in ("xlsx", "xls"):
         try:
             import openpyxl
-            wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True)
+            wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
             ws = wb.active
             lines = []
             for row in ws.iter_rows(values_only=True):
                 line = "\t".join(str(cell) if cell is not None else "" for cell in row)
                 lines.append(line)
+            wb.close()
             return "\n".join(lines)
         except Exception as e:
             logger.warning("XLSX parse error: %s", str(e))
@@ -179,9 +274,6 @@ async def _extract_text(content: bytes, filename: str) -> str | None:
 
     elif ext == "pdf":
         try:
-            # Try basic text extraction
-            import subprocess
-            # Use pdftotext if available, else try PyPDF2-style
             try:
                 from PyPDF2 import PdfReader
                 reader = PdfReader(io.BytesIO(content))
@@ -191,14 +283,11 @@ async def _extract_text(content: bytes, filename: str) -> str | None:
                 return text
             except ImportError:
                 pass
-
-            # Fallback: decode as text (won't work for most PDFs)
             return content.decode("utf-8", errors="replace")
         except Exception as e:
             logger.warning("PDF parse error: %s", str(e))
             return None
 
-    # Try as plain text
     return content.decode("utf-8", errors="replace")
 
 
