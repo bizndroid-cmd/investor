@@ -144,29 +144,44 @@ async def confirm_import(
                 db.add(snapshot)
             imported += 1
 
-        # Create daily summary
-        total_value = sum(Decimal(str(r.get("current_value") or r.get("closing value") or r.get("closing_value") or 0)) for r in rows if r.get("ticker") or r.get("symbol"))
+        # Create/update daily summary
+        total_value = sum(Decimal(str(r.get("current_value") or r.get("closing_value") or 0)) for r in rows if r.get("ticker") or r.get("symbol"))
         total_invested = sum(
-            Decimal(str(r.get("avg_buy_price") or r.get("buy_price") or r.get("average buy price") or 0)) * Decimal(str(r.get("quantity", 0)))
+            Decimal(str(r.get("avg_buy_price") or r.get("buy_price") or r.get("average_buy_price") or 0)) * Decimal(str(r.get("quantity", 0) or 0))
             for r in rows if r.get("ticker") or r.get("symbol")
         )
         total_gl = total_value - total_invested
         total_gl_pct = (total_gl / total_invested * 100) if total_invested > 0 else Decimal("0")
 
-        summary = PortfolioDailySummary(
-            id=uuid4(),
-            user_id=session.user_id,
-            portfolio_id=portfolio_id,
-            snapshot_date=today,
-            total_value=total_value,
-            total_invested=total_invested,
-            total_gain_loss=total_gl,
-            total_gain_loss_percent=total_gl_pct,
-            day_change=Decimal("0"),
-            day_change_percent=Decimal("0"),
-            holdings_count=imported,
+        # Upsert summary
+        existing_summary_stmt = select(PortfolioDailySummary).where(
+            PortfolioDailySummary.user_id == session.user_id,
+            PortfolioDailySummary.snapshot_date == today,
         )
-        db.add(summary)
+        existing_summary = (await db.execute(existing_summary_stmt)).scalar_one_or_none()
+
+        if existing_summary:
+            existing_summary.total_value = total_value
+            existing_summary.total_invested = total_invested
+            existing_summary.total_gain_loss = total_gl
+            existing_summary.total_gain_loss_percent = total_gl_pct
+            existing_summary.holdings_count = imported
+            existing_summary.portfolio_id = portfolio_id
+        else:
+            summary = PortfolioDailySummary(
+                id=uuid4(),
+                user_id=session.user_id,
+                portfolio_id=portfolio_id,
+                snapshot_date=today,
+                total_value=total_value,
+                total_invested=total_invested,
+                total_gain_loss=total_gl,
+                total_gain_loss_percent=total_gl_pct,
+                day_change=Decimal("0"),
+                day_change_percent=Decimal("0"),
+                holdings_count=imported,
+            )
+            db.add(summary)
 
     elif doc_type == "orders":
         # Import as trade history — skip duplicates by order_id or ticker+date+qty
