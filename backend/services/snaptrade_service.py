@@ -1,7 +1,6 @@
 """SnapTrade integration — unified US broker connection via OAuth.
 
-Uses SnapTrade REST API directly (no SDK dependency).
-Auth: clientId + Signature (HMAC-SHA256 of consumerKey + request content).
+Uses SnapTrade REST API with proper HMAC-SHA256 request signing.
 """
 
 from __future__ import annotations
@@ -11,9 +10,10 @@ import hmac
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from base64 import b64encode
 from decimal import Decimal
 from typing import Any
+from urllib.parse import urlencode
 from uuid import UUID
 
 import httpx
@@ -26,60 +26,87 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://api.snaptrade.com/api/v1"
 
 
+def _compute_signature(consumer_key: str, path: str, query_string: str, body: Any = None) -> str:
+    """Compute SnapTrade request signature.
+
+    1. Build payload: {content, path, query} with sorted keys
+    2. Canonical JSON (sorted, no whitespace)
+    3. HMAC-SHA256 with consumerKey
+    4. Base64 encode
+    """
+    content = body if body is not None else None
+
+    payload = {
+        "content": content,
+        "path": path,
+        "query": query_string,
+    }
+
+    # Canonical JSON: sorted keys, no whitespace
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+    # HMAC-SHA256
+    sig = hmac.new(
+        consumer_key.encode("utf-8"),
+        canonical.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+
+    return b64encode(sig).decode("utf-8")
+
+
 class SnapTradeService:
-    """Manages SnapTrade API interactions using direct HTTP + HMAC signing."""
+    """SnapTrade API client with proper request signing."""
 
     def __init__(self):
         self.client_id = settings.snaptrade_client_id
         self.consumer_key = settings.snaptrade_consumer_key
 
-    def _sign(self, path: str, data: str = "") -> tuple[str, str]:
-        """Generate timestamp + signature for request."""
-        timestamp = str(int(time.time()))
-        sig_content = f"/api/v1{path}&clientId={self.client_id}&timestamp={timestamp}"
-        if data:
-            sig_content += f"&content={data}"
-        signature = hmac.new(
-            self.consumer_key.encode("utf-8"),
-            sig_content.encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
-        return timestamp, signature
-
     async def _request(self, method: str, path: str, params: dict = None, body: dict = None) -> Any:
-        """Make authenticated request to SnapTrade API."""
-        url = f"{BASE_URL}{path}"
-
+        """Make signed request to SnapTrade API."""
         if params is None:
             params = {}
 
-        body_str = json.dumps(body) if body else ""
-        timestamp, signature = self._sign(path, body_str)
-
+        # Add required auth params
         params["clientId"] = self.client_id
-        params["timestamp"] = timestamp
-        params["Signature"] = signature
+        params["timestamp"] = str(int(time.time()))
 
-        headers = {"Content-Type": "application/json"}
+        # Build query string (exact order matters for signature)
+        query_string = urlencode(params)
+        full_path = f"/api/v1{path}"
+
+        # Compute signature
+        signature = _compute_signature(
+            self.consumer_key,
+            full_path,
+            query_string,
+            body,
+        )
+
+        url = f"{BASE_URL}{path}?{query_string}"
+        headers = {
+            "Signature": signature,
+            "Content-Type": "application/json",
+        }
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 if method == "GET":
-                    resp = await client.get(url, params=params, headers=headers)
+                    resp = await client.get(url, headers=headers)
                 elif method == "POST":
-                    resp = await client.post(url, params=params, json=body, headers=headers)
+                    resp = await client.post(url, headers=headers, json=body)
                 elif method == "DELETE":
-                    resp = await client.delete(url, params=params, headers=headers)
+                    resp = await client.delete(url, headers=headers)
                 else:
                     return None
 
                 if resp.status_code >= 400:
-                    logger.warning("SnapTrade %s %s -> %d: %s", method, path, resp.status_code, resp.text[:200])
+                    logger.warning("SnapTrade %s %s -> %d: %s", method, path, resp.status_code, resp.text[:300])
                     return None
 
                 return resp.json() if resp.text.strip() else None
             except Exception as e:
-                logger.error("SnapTrade request failed: %s", str(e))
+                logger.error("SnapTrade request error: %s", str(e))
                 return None
 
     async def register_user(self, user_id: UUID) -> dict | None:
@@ -98,7 +125,7 @@ class SnapTradeService:
             "POST",
             "/snapTrade/login",
             params={"userId": str(user_id), "userSecret": user_secret},
-            body=body,
+            body=body if body else None,
         )
         if result:
             return result.get("redirectURI") or result.get("loginLink")
@@ -125,7 +152,6 @@ class SnapTradeService:
             return []
 
         holdings = []
-        # SnapTrade returns list of account holdings
         accounts = result if isinstance(result, list) else [result]
 
         for account_data in accounts:

@@ -68,6 +68,10 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     # NO ports: exposed to host — only accessible via Caddy proxy
 
   # ---------------------------------------------------------------------------
