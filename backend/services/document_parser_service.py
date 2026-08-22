@@ -203,15 +203,18 @@ async def _extract_text(content: bytes, filename: str) -> str | None:
 
 
 async def _fallback_parse(text: str, broker: str, currency: str, filename: str, parse_log: list) -> dict:
-    """Rule-based fallback parser for common formats (Groww XLSX)."""
+    """Rule-based fallback parser for common formats."""
     parse_log.append("Using rule-based parser...")
 
     lines = text.strip().split("\n")
-    # Find header row (first row with multiple tab-separated values)
+    # Find header row — look for common keywords
     header_idx = None
+    keywords = ["stock name", "ticker", "symbol", "name", "quantity", "isin", "security name", "description"]
+
     for i, line in enumerate(lines):
-        cells = [c.strip() for c in line.split("\t") if c.strip()]
-        if len(cells) >= 4 and any(kw in line.lower() for kw in ["stock", "name", "ticker", "symbol", "quantity", "isin"]):
+        line_lower = line.lower().strip()
+        matches = sum(1 for kw in keywords if kw in line_lower)
+        if matches >= 2:
             header_idx = i
             break
 
@@ -219,26 +222,92 @@ async def _fallback_parse(text: str, broker: str, currency: str, filename: str, 
         parse_log.append("Could not detect header row")
         return {"status": "error", "message": "Could not find data table in document", "parse_log": parse_log}
 
-    headers = [c.strip() for c in lines[header_idx].split("\t") if c.strip()]
-    parse_log.append(f"Headers: {headers}")
+    # Parse headers (handle leading/trailing whitespace and tabs)
+    raw_headers = lines[header_idx].split("\t")
+    headers = [h.strip() for h in raw_headers if h.strip()]
+    parse_log.append(f"Headers ({len(headers)}): {', '.join(headers[:6])}...")
+
+    # Standardize header names
+    header_map = {}
+    for h in headers:
+        hl = h.lower()
+        if "stock name" in hl or hl == "name":
+            header_map[h] = "stock_name"
+        elif hl == "isin":
+            header_map[h] = "isin"
+        elif "quantity" in hl or hl == "qty":
+            header_map[h] = "quantity"
+        elif "average" in hl or "avg" in hl and "price" in hl:
+            header_map[h] = "avg_buy_price"
+        elif "buy value" in hl or "invested" in hl:
+            header_map[h] = "buy_value"
+        elif "closing price" in hl or "current price" in hl:
+            header_map[h] = "current_price"
+        elif "closing value" in hl or "current value" in hl:
+            header_map[h] = "current_value"
+        elif "unrealised" in hl or "p&l" in hl or "pnl" in hl:
+            header_map[h] = "unrealized_pnl"
+        elif "symbol" in hl:
+            header_map[h] = "ticker"
+        elif "type" in hl:
+            header_map[h] = "trade_type"
+        elif "exchange" in hl and "order" not in hl:
+            header_map[h] = "exchange"
+        elif "execution" in hl or "date" in hl:
+            header_map[h] = "executed_at"
+        elif "value" in hl:
+            header_map[h] = "value"
+        elif "price" in hl:
+            header_map[h] = "price"
+        else:
+            header_map[h] = h.lower().replace(" ", "_")
+
+    standardized_headers = [header_map.get(h, h.lower().replace(" ", "_")) for h in headers]
 
     rows = []
     for line in lines[header_idx + 1:]:
-        cells = [c.strip() for c in line.split("\t")]
-        if len(cells) >= len(headers) and cells[0]:
-            row = {headers[j]: cells[j] for j in range(min(len(headers), len(cells)))}
+        cells = line.split("\t")
+        # Strip whitespace from cells
+        cells = [c.strip() for c in cells]
+        # Filter out empty rows — find cells matching header count
+        non_empty = [c for c in cells if c]
+        if len(non_empty) < 2:
+            continue
+
+        # Align cells with headers (handle leading empty tab)
+        aligned_cells = []
+        for c in cells:
+            if c.strip():
+                aligned_cells.append(c.strip())
+        if len(aligned_cells) < len(headers):
+            continue
+
+        row = {}
+        for j, h in enumerate(standardized_headers):
+            if j < len(aligned_cells):
+                row[h] = aligned_cells[j]
+        if row:
             rows.append(row)
+
+    # Generate ticker from stock_name if no ticker column
+    if "ticker" not in standardized_headers and "stock_name" in standardized_headers:
+        standardized_headers.insert(0, "ticker")
+        for row in rows:
+            # Use first word of stock name as rough ticker
+            name = row.get("stock_name", "")
+            row["ticker"] = name.split(" ")[0].upper() if name else ""
 
     parse_log.append(f"Extracted {len(rows)} rows")
     parse_log.append("✓ Fallback parsing complete")
 
     return {
-        "status": "success",
+        "status": "success" if rows else "error",
         "doc_type": "holdings",
-        "columns": headers,
+        "columns": standardized_headers,
         "rows": rows,
         "metadata": {"broker": broker},
         "parse_log": parse_log,
         "broker": broker,
         "currency": currency,
+        "message": None if rows else "No data rows found",
     }
