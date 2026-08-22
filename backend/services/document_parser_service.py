@@ -275,18 +275,15 @@ async def _fallback_parse(text: str, broker: str, currency: str, filename: str, 
             continue
 
         # Align cells with headers (handle leading empty tab)
-        aligned_cells = []
-        for c in cells:
-            if c.strip():
-                aligned_cells.append(c.strip())
-        if len(aligned_cells) < len(headers):
+        aligned_cells = [c.strip() for c in cells if c.strip()]
+        if len(aligned_cells) < 2:
             continue
 
         row = {}
         for j, h in enumerate(standardized_headers):
             if j < len(aligned_cells):
                 row[h] = aligned_cells[j]
-        if row:
+        if row and any(v for v in row.values()):
             rows.append(row)
 
     # Generate ticker from stock_name if no ticker column
