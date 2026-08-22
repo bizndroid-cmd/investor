@@ -11,6 +11,7 @@ import {
   Settings2,
   Coins,
   Target,
+  Upload,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -23,6 +24,7 @@ const navItems = [
   { to: "/briefing", label: "AI Copilot", icon: FileText },
   { to: "/alerts", label: "Alerts", icon: Bell },
   { to: "/brokers", label: "Brokers", icon: Link2 },
+  { to: "/imports", label: "Offline Import", icon: Upload },
   { to: "/settings", label: "Settings", icon: Settings2 },
 ];
 

@@ -9,6 +9,7 @@ import { ComparisonPage } from "@/pages/ComparisonPage";
 import { DetailedNewsPage } from "@/pages/DetailedNewsPage";
 import { ETFsPage } from "@/pages/ETFsPage";
 import { GoalsPage } from "@/pages/GoalsPage";
+import { ImportsPage } from "@/pages/ImportsPage";
 import { EarningsPage } from "@/pages/EarningsPage";
 import { AttachmentsPage } from "@/pages/AttachmentsPage";
 import { PredictionsPage } from "@/pages/PredictionsPage";
@@ -62,6 +63,7 @@ function App() {
           <Route path="/briefing" element={<DailyBriefingPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/brokers" element={<BrokersPage />} />
+          <Route path="/imports" element={<ImportsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
 
           {/* Hidden pages (accessible via URL, not in sidebar) */}
