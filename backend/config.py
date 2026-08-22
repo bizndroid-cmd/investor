@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-3-haiku-20240307"
     ollama_model: str = "llama3"
     groq_api_key: str = ""
-    groq_model: str = "llama-3.1-70b-versatile"
+    groq_model: str = "llama-4-scout-17b-16e-instruct"
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.0-flash-lite"
 
