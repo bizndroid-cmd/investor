@@ -207,6 +207,11 @@ async def _fallback_parse(text: str, broker: str, currency: str, filename: str, 
     parse_log.append("Using rule-based parser...")
 
     lines = text.strip().split("\n")
+
+    # Debug: log first 10 lines to understand format
+    for i, line in enumerate(lines[:10]):
+        parse_log.append(f"[L{i}] {line[:100]}")
+
     # Find header row — look for common keywords
     header_idx = None
     keywords = ["stock name", "ticker", "symbol", "name", "quantity", "isin", "security name", "description"]
