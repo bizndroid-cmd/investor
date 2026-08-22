@@ -63,11 +63,16 @@ async def register_snaptrade_user(
     session: Session = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Register user with SnapTrade. Only needed once."""
-    # Check if already registered
+    """Register user with SnapTrade. For Commercial keys only.
+    Personal keys (PERS-*) skip this step."""
+    # Check if personal key
+    from backend.config import settings
+    if settings.snaptrade_client_id.startswith("PERS-"):
+        return {"status": "personal_key", "message": "Personal key — no registration needed"}
+
     existing_secret = await _get_user_secret(db, session.user_id)
     if existing_secret:
-        return {"status": "already_registered", "message": "User already connected to SnapTrade"}
+        return {"status": "already_registered"}
 
     svc = SnapTradeService()
     result = await svc.register_user(session.user_id)
@@ -79,10 +84,8 @@ async def register_snaptrade_user(
     if not user_secret:
         raise HTTPException(status_code=502, detail="SnapTrade did not return userSecret")
 
-    # Store the secret
     await _store_user_secret(db, session.user_id, user_secret)
-
-    return {"status": "registered", "message": "Ready to connect broker"}
+    return {"status": "registered"}
 
 
 @router.get("/connect-url")
@@ -91,17 +94,23 @@ async def get_connect_url(
     session: Session = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Get Connection Portal URL. User opens this to connect their broker via OAuth.
+    """Get Connection Portal URL for broker OAuth.
 
-    Optional broker param: ROBINHOOD, FIDELITY, ETRADE, SCHWAB, etc.
-    If omitted, user picks from SnapTrade's broker list.
+    For Personal keys: uses personal login flow (no userId/userSecret needed).
+    For Commercial keys: requires prior registration.
     """
-    user_secret = await _get_user_secret(db, session.user_id)
-    if not user_secret:
-        raise HTTPException(status_code=400, detail="Register with SnapTrade first (POST /snaptrade/register)")
+    from backend.config import settings
 
     svc = SnapTradeService()
-    url = await svc.get_login_url(session.user_id, user_secret, broker=broker)
+
+    if settings.snaptrade_client_id.startswith("PERS-"):
+        # Personal key flow — no userId/userSecret
+        url = await svc.get_personal_login_url(broker=broker)
+    else:
+        user_secret = await _get_user_secret(db, session.user_id)
+        if not user_secret:
+            raise HTTPException(status_code=400, detail="Register with SnapTrade first")
+        url = await svc.get_login_url(session.user_id, user_secret, broker=broker)
 
     if not url:
         raise HTTPException(status_code=502, detail="Failed to get connection URL from SnapTrade")

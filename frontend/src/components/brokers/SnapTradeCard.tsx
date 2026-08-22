@@ -32,19 +32,25 @@ export function SnapTradeCard() {
   const handleConnect = async (broker?: string) => {
     setConnecting(true);
     try {
-      // Register first (idempotent)
-      await apiFetch("/snaptrade/register", { method: "POST" });
-
-      // Get connection URL
+      // Get connection URL directly (Personal keys don't need registration)
       const params = broker ? `?broker=${broker}` : "";
       const result = await apiFetch<{ connect_url: string }>(`/snaptrade/connect-url${params}`);
 
       if (result.connect_url) {
-        // Open in new window (broker OAuth flow)
         window.open(result.connect_url, "_blank", "width=600,height=700");
       }
     } catch (e: any) {
-      console.error("SnapTrade connect error:", e);
+      // If connect-url fails, try registering first then retry
+      try {
+        await apiFetch("/snaptrade/register", { method: "POST" });
+        const params = broker ? `?broker=${broker}` : "";
+        const result = await apiFetch<{ connect_url: string }>(`/snaptrade/connect-url${params}`);
+        if (result.connect_url) {
+          window.open(result.connect_url, "_blank", "width=600,height=700");
+        }
+      } catch (e2: any) {
+        console.error("SnapTrade connect error:", e2);
+      }
     } finally {
       setConnecting(false);
     }

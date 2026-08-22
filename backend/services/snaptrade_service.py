@@ -116,7 +116,7 @@ class SnapTradeService:
         })
 
     async def get_login_url(self, user_id: UUID, user_secret: str, broker: str = None) -> str | None:
-        """Get Connection Portal URL for broker OAuth."""
+        """Get Connection Portal URL for broker OAuth (Commercial key)."""
         body = {}
         if broker:
             body["broker"] = broker
@@ -125,6 +125,21 @@ class SnapTradeService:
             "POST",
             "/snapTrade/login",
             params={"userId": str(user_id), "userSecret": user_secret},
+            body=body if body else None,
+        )
+        if result:
+            return result.get("redirectURI") or result.get("loginLink")
+        return None
+
+    async def get_personal_login_url(self, broker: str = None) -> str | None:
+        """Get Connection Portal URL for Personal key (no userId/userSecret)."""
+        body = {}
+        if broker:
+            body["broker"] = broker
+
+        result = await self._request(
+            "POST",
+            "/snapTrade/login",
             body=body if body else None,
         )
         if result:
